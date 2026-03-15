@@ -156,7 +156,7 @@ filterwarnings = [
 ]
 env = [
     "CITRATE_RPC_URL=http://localhost:8545",
-    "CITRATE_CHAIN_ID=1337",
+    "CITRATE_CHAIN_ID=40204",
 ]
 
 # Coverage configuration
