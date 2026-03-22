@@ -171,7 +171,7 @@ pytest --cov=citrate_sdk tests/
 
 - **GitHub**: [github.com/SaulBuilds/citrate](https://github.com/SaulBuilds/citrate)
 - **Issues**: [github.com/SaulBuilds/citrate/issues](https://github.com/SaulBuilds/citrate/issues)
-- **Discord**: [discord.gg/citrate](https://discord.gg/citrate)
+- **Discord**: [discord.gg/A3Uwe4BvdN](https://discord.gg/A3Uwe4BvdN)
 
 ## License
 
