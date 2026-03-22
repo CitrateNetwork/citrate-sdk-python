@@ -12,17 +12,17 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="citrate-sdk",
-    version="0.1.0",
+    version="0.3.0",
     author="Citrate Team",
     author_email="developers@citrate.ai",
     description="Python SDK for Citrate AI blockchain platform",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/citrate-ai/citrate-v3",
+    url="https://github.com/SaulBuilds/citrate",
     project_urls={
         "Documentation": "https://docs.citrate.ai",
-        "Source": "https://github.com/citrate-ai/citrate-v3",
-        "Tracker": "https://github.com/citrate-ai/citrate-v3/issues",
+        "Source": "https://github.com/SaulBuilds/citrate",
+        "Tracker": "https://github.com/SaulBuilds/citrate/issues",
     },
     packages=find_packages(),
     classifiers=[
