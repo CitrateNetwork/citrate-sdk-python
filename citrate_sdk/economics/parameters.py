@@ -62,6 +62,7 @@ assert _TOTAL_SHARE_BPS == 10000, (
 BME_BURN_RATE: float = 0.025  # 2.5 % of compute job value burned
 TREASURY_FEE_RATE: float = 0.025  # 2.5 % of compute job value -> treasury
 MIN_PROVIDER_STAKE: int = 1_000  # SALT
+MARKET_MAKER_GAS_BPS: int = 1_000  # 10 % of gas fees → market maker (DLP)
 
 # ---------------------------------------------------------------------------
 # Staking
