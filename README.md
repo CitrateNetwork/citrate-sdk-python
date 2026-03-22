@@ -1,14 +1,8 @@
 # Citrate Python SDK
 
-A comprehensive Python SDK for interacting with the Citrate AI blockchain platform. Deploy AI models, execute inferences, manage encryption, and handle payments with ease.
+The official Python SDK for the Citrate AI blockchain platform. Deploy AI models, manage learning pools, stake SALT, create classrooms, post compute jobs, and interact with the verified compute marketplace.
 
-## Features
-
-- **Model Deployment**: Deploy AI models to Citrate blockchain with encryption and access control
-- **Inference Execution**: Run AI inference on deployed models with pay-per-use pricing
-- **Encryption & Security**: End-to-end encryption for model weights and inference data
-- **Payment Integration**: Built-in payment handling for model access and revenue sharing
-- **Multi-format Support**: CoreML, ONNX, TensorFlow, PyTorch model support
+**Version**: 0.3.0 | **Tests**: 51 learning/compute + existing unit tests | **Token**: SALT (native gas)
 
 ## Installation
 
@@ -19,358 +13,166 @@ pip install citrate-sdk
 ## Quick Start
 
 ```python
-from citrate_sdk import CitrateClient, ModelConfig
-
-# Connect to Citrate network
-client = CitrateClient("https://mainnet.citrate.ai")
-
-# Deploy encrypted model
-model = client.deploy_model(
-    model_path="./my_model.mlpackage",
-    config=ModelConfig(
-        encrypted=True,
-        access_price=0.01,  # ETH per inference
-        access_list=["0x123..."]
-    )
-)
-
-# Execute inference
-result = client.inference(
-    model_id=model.id,
-    input_data={"text": "Hello world"},
-    encrypted=True
-)
-
-print(f"Model output: {result.output_data}")
-```
-
-## Authentication
-
-### Using Private Key
-
-```python
 from citrate_sdk import CitrateClient
 
-# Initialize with private key
+# Connect to Citrate testnet
 client = CitrateClient(
-    rpc_url="https://mainnet.citrate.ai",
-    private_key="0x1234..."
+    rpc_url="http://localhost:8545",
+    private_key="0x..."  # Optional: for signing transactions
 )
+
+# Check balance
+balance = client.get_balance()
+print(f"Balance: {balance} SALT")
+
+# List learning pools
+pools = client.learning.list_pools()
+for pool in pools:
+    print(f"{pool.name}: {pool.member_count} members")
 ```
 
-### Generate New Key
+## Features
+
+- **AI Models** — Deploy, query, and run inference on on-chain AI models
+- **Learning Pools** — Join federated learning pools, track OODA cycles, earn from contributions
+- **Staking** — Deposit SALT → stSALT, withdraw, track share price and APY
+- **Classrooms** — Create teacher classrooms, enroll students, manage model whitelists
+- **Compute Marketplace** — Post jobs, bid, register as provider, create GPU pools
+- **Encryption** — End-to-end encryption for model weights and inference data
+- **IPFS** — Pin and manage model artifacts
+
+## Managers
+
+The SDK exposes managers for each domain:
+
+| Manager | Access | Purpose |
+|---------|--------|---------|
+| `client.learning` | `LearningManager` | Learning pools, cycles, contributions |
+| `client.staking` | `StakingManager` | stSALT deposit, withdraw, share price |
+| `client.classroom` | `ClassroomManager` | Teacher classrooms, student enrollment |
+| `client.compute` | `ComputeManager` | Compute marketplace, jobs, providers, pools |
+
+### Learning Pools
 
 ```python
-from citrate_sdk.crypto import KeyManager
+# List available pools
+pools = client.learning.list_pools()
 
-# Generate new key pair
-key_manager = KeyManager()
-print(f"Address: {key_manager.get_address()}")
-print(f"Private Key: {key_manager.get_private_key()}")
+# Join a pool (stake SALT)
+tx = client.learning.join_pool(pool_id=0, stake_amount="1000000000000000000")
+
+# Get cycle status
+cycle = client.learning.get_cycle_status()
+print(f"Cycle {cycle.cycle_id}: {cycle.state}")
+
+# Get your contribution scores
+contribs = client.learning.get_contributions(address)
+print(f"Score: {contribs.total_score}")
 ```
 
-## Model Deployment
+### Staking (stSALT)
 
-### Basic Deployment
+```python
+# Deposit SALT → receive stSALT
+tx = client.staking.deposit("32000000000000000000000")  # 32,000 SALT
+
+# Check staking info
+info = client.staking.get_info()
+print(f"Share price: {info.share_price}")
+print(f"Your staked value: {info.user_staked_value}")
+
+# Withdraw (7-day lockup)
+tx = client.staking.withdraw("1000000000000000000")
+```
+
+### Classrooms
+
+```python
+# Create a classroom (teachers)
+tx = client.classroom.create("AP Computer Science", max_students=30)
+
+# Enroll with invite code (students)
+tx = client.classroom.enroll("INVITE-CODE-123")
+
+# Deploy model to classroom whitelist
+tx = client.classroom.deploy_model("0xModelHash...")
+
+# Check if student can access a model
+can_access = client.classroom.can_student_access_model(student, model_hash)
+```
+
+### Compute Marketplace
+
+```python
+# Post a compute job
+job_id = client.compute.post_job(
+    model_hash="0x...",
+    input_data="0x...",
+    max_price="10000000000",
+    tier="Commitment"  # or "ZKProof", "TEE"
+)
+
+# Register as a compute provider (1000 SALT minimum)
+tx = client.compute.register_provider(
+    stake="1000000000000000000000",
+    models=["0xModel1"],
+    endpoint="https://my-node.com"
+)
+
+# Create a GPU pool
+tx = client.compute.create_pool("My Pool", "InferencePool", 3, 1000, "100000000")
+
+# List available pools
+pools = client.compute.get_pools()
+```
+
+## Models & Inference
 
 ```python
 from citrate_sdk import ModelConfig, ModelType, AccessType
 
+# Deploy a model
 config = ModelConfig(
     name="My Model",
-    description="A powerful AI model",
-    model_type=ModelType.COREML,
+    model_type=ModelType.GGUF,
     access_type=AccessType.PUBLIC
 )
+deployment = client.deploy_model("./model.gguf", config)
 
-deployment = client.deploy_model("./model.mlpackage", config)
-print(f"Model ID: {deployment.model_id}")
-```
-
-### Encrypted Deployment
-
-```python
-from citrate_sdk import EncryptionConfig
-
-config = ModelConfig(
-    encrypted=True,
-    encryption_config=EncryptionConfig(
-        threshold_shares=3,
-        total_shares=5
-    ),
-    access_type=AccessType.PAID,
-    access_price=1000000000000000000  # 1 ETH in wei
-)
-
-deployment = client.deploy_model("./model.mlpackage", config)
-```
-
-## Inference Execution
-
-### Public Model Inference
-
-```python
-# Run inference on public model
+# Run inference
 result = client.inference(
-    model_id="model_abc123",
-    input_data={
-        "text": "Classify this text",
-        "image": "base64_encoded_image"
-    }
+    model_id=deployment.model_id,
+    input_data={"text": "Hello world"}
 )
-
-print(f"Prediction: {result.output_data}")
-print(f"Confidence: {result.confidence}")
-print(f"Gas used: {result.gas_used}")
+print(f"Output: {result.output_data}")
 ```
 
-### Paid Model Access
+## Network Configuration
 
 ```python
-# Purchase access to paid model
-tx_hash = client.purchase_model_access(
-    model_id="model_xyz789",
-    payment_amount=1000000000000000000  # 1 ETH
-)
-
-# Execute inference after purchase
-result = client.inference(
-    model_id="model_xyz789",
-    input_data={"text": "Premium inference"}
-)
-```
-
-### Encrypted Inference
-
-```python
-# Run encrypted inference
-result = client.inference(
-    model_id="encrypted_model_456",
-    input_data={"sensitive_data": "private input"},
-    encrypted=True
-)
-```
-
-## Model Management
-
-### List Available Models
-
-```python
-# List all public models
-models = client.list_models(limit=50)
-
-for model in models:
-    print(f"{model['name']}: {model['model_id']}")
-```
-
-### Get Model Information
-
-```python
-info = client.get_model_info("model_abc123")
-
-print(f"Owner: {info['owner']}")
-print(f"Price: {info['access_price']} wei")
-print(f"Total inferences: {info['total_inferences']}")
-```
-
-## Encryption & Security
-
-### Manual Encryption
-
-```python
-from citrate_sdk.crypto import KeyManager
-
-key_manager = KeyManager("0x1234...")
-
-# Encrypt arbitrary data
-encrypted = key_manager.encrypt_data("sensitive information")
-
-# Decrypt data
-decrypted = key_manager.decrypt_data(encrypted)
-```
-
-### Shared Key Derivation
-
-```python
-# Generate ECDH shared key with another party
-peer_public_key = "0x5678..."
-shared_key = key_manager.derive_shared_key(peer_public_key)
-```
-
-## Error Handling
-
-```python
-from citrate_sdk.errors import (
-    ModelNotFoundError,
-    InsufficientFundsError,
-    InferenceError
-)
-
-try:
-    result = client.inference("invalid_model", {"data": "test"})
-except ModelNotFoundError:
-    print("Model doesn't exist")
-except InsufficientFundsError:
-    print("Not enough funds for inference")
-except InferenceError as e:
-    print(f"Inference failed: {e}")
-```
-
-## Configuration
-
-### Custom RPC Endpoint
-
-```python
-# Connect to local development node
+# Local devnet
 client = CitrateClient("http://localhost:8545")
 
-# Connect to testnet
-client = CitrateClient("https://testnet.citrate.ai")
+# Testnet
+client = CitrateClient("https://rpc.citrate.ai", private_key="0x...")
 ```
 
-### Advanced Configuration
+**Chain ID**: 40204 | **Token**: SALT | **Block time**: ~2 seconds
 
-```python
-from citrate_sdk import CitrateClient
-
-client = CitrateClient(
-    rpc_url="https://mainnet.citrate.ai",
-    private_key="0x1234...",
-)
-
-# Customize timeouts and gas limits
-result = client.inference(
-    model_id="model_123",
-    input_data={"text": "test"},
-    max_gas=2000000  # Higher gas limit
-)
-```
-
-## Examples
-
-### Image Classification
-
-```python
-import base64
-from citrate_sdk import CitrateClient, ModelConfig, ModelType
-
-client = CitrateClient(private_key="0x1234...")
-
-# Deploy image classifier
-config = ModelConfig(
-    name="Image Classifier",
-    model_type=ModelType.COREML,
-    access_type=AccessType.PAID,
-    access_price=100000000000000000  # 0.1 ETH
-)
-
-model = client.deploy_model("./classifier.mlpackage", config)
-
-# Classify image
-with open("image.jpg", "rb") as f:
-    image_data = base64.b64encode(f.read()).decode()
-
-result = client.inference(
-    model_id=model.model_id,
-    input_data={"image": image_data}
-)
-
-print(f"Classification: {result.output_data['label']}")
-print(f"Confidence: {result.output_data['confidence']}")
-```
-
-### Text Generation
-
-```python
-# Deploy text generation model
-config = ModelConfig(
-    name="Text Generator",
-    model_type=ModelType.PYTORCH,
-    access_type=AccessType.PUBLIC
-)
-
-model = client.deploy_model("./text_gen.pt", config)
-
-# Generate text
-result = client.inference(
-    model_id=model.model_id,
-    input_data={
-        "prompt": "The future of AI is",
-        "max_tokens": 100,
-        "temperature": 0.7
-    }
-)
-
-print(f"Generated: {result.output_data['text']}")
-```
-
-## API Reference
-
-### CitrateClient
-
-#### Methods
-
-- `deploy_model(model_path, config)` - Deploy AI model
-- `inference(model_id, input_data, **kwargs)` - Execute inference
-- `get_model_info(model_id)` - Get model information
-- `list_models(owner=None, limit=100)` - List available models
-- `purchase_model_access(model_id, amount)` - Purchase model access
-
-### ModelConfig
-
-#### Parameters
-
-- `name` - Model name
-- `description` - Model description
-- `model_type` - ModelType enum (COREML, ONNX, etc.)
-- `access_type` - AccessType enum (PUBLIC, PRIVATE, PAID)
-- `encrypted` - Enable encryption (bool)
-- `access_price` - Price per inference in wei (int)
-
-### KeyManager
-
-#### Methods
-
-- `get_address()` - Get Ethereum address
-- `encrypt_data(data)` - Encrypt string data
-- `decrypt_data(encrypted)` - Decrypt string data
-- `derive_shared_key(peer_pubkey)` - ECDH key derivation
-
-## Development
-
-### Testing
+## Testing
 
 ```bash
-# Install dev dependencies
 pip install -e ".[dev]"
-
-# Run tests
 pytest tests/
-
-# Run with coverage
 pytest --cov=citrate_sdk tests/
-```
-
-### Code Formatting
-
-```bash
-# Format code
-black citrate_sdk/
-
-# Check style
-flake8 citrate_sdk/
-
-# Type checking
-mypy citrate_sdk/
 ```
 
 ## Support
 
-- **Documentation**: https://docs.citrate.ai
-- **GitHub**: https://github.com/citrate-ai/citrate
-- **Discord**: https://discord.gg/citrate
-- **Issues**: https://github.com/citrate-ai/citrate/issues
+- **GitHub**: [github.com/SaulBuilds/citrate](https://github.com/SaulBuilds/citrate)
+- **Issues**: [github.com/SaulBuilds/citrate/issues](https://github.com/SaulBuilds/citrate/issues)
+- **Discord**: [discord.gg/citrate](https://discord.gg/citrate)
 
 ## License
 
-Apache License 2.0 - see [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](../../LICENSE) for details.
