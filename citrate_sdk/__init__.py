@@ -37,7 +37,7 @@ from .types import (
     Dispute,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __author__ = "Citrate Team"
 
 __all__ = [

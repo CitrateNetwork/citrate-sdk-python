@@ -19,7 +19,7 @@ def main():
     """Run marketplace demo"""
 
     # Configuration
-    RPC_URL = os.getenv("LATTICE_RPC_URL", "http://localhost:8545")
+    RPC_URL = os.getenv("CITRATE_RPC_URL", "http://localhost:8545")
 
     # Create multiple accounts for marketplace simulation
     print("Creating marketplace participants...")

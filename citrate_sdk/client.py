@@ -242,7 +242,7 @@ class CitrateClient:
     def get_model_info(self, model_id: str) -> Dict[str, Any]:
         """Get model deployment information"""
         params = [model_id]
-        result = self._rpc_call("citrate_getModelInfo", params)
+        result = self._rpc_call("citrate_getModel", params)
 
         if not result:
             raise ModelNotFoundError(f"Model not found: {model_id}")

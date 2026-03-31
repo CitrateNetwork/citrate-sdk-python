@@ -7,7 +7,7 @@ Run with: pytest tests/test_integration.py -v
 
 Environment variables:
 - CITRATE_RPC_URL: RPC endpoint (default: http://localhost:8545)
-- CITRATE_CHAIN_ID: Chain ID (default: 1337)
+- CITRATE_CHAIN_ID: Chain ID (default: 40204 for testnet, use 1337 for local devnet)
 - CITRATE_TEST_PRIVATE_KEY: Private key with funds for transaction tests
 """
 
@@ -28,7 +28,7 @@ from citrate_sdk.errors import CitrateError
 # ============================================================================
 
 RPC_ENDPOINT = os.environ.get('CITRATE_RPC_URL', 'http://localhost:8545')
-CHAIN_ID = int(os.environ.get('CITRATE_CHAIN_ID', '1337'))
+CHAIN_ID = int(os.environ.get('CITRATE_CHAIN_ID', '40204'))
 TEST_PRIVATE_KEY = os.environ.get('CITRATE_TEST_PRIVATE_KEY')
 
 # Well-known test accounts (from Hardhat/Anvil)

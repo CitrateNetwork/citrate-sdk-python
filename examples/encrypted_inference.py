@@ -20,7 +20,7 @@ def main():
     """Run encrypted inference example"""
 
     # Configuration
-    RPC_URL = os.getenv("LATTICE_RPC_URL", "http://localhost:8545")
+    RPC_URL = os.getenv("CITRATE_RPC_URL", "http://localhost:8545")
     PRIVATE_KEY = os.getenv("CITRATE_PRIVATE_KEY")
 
     if not PRIVATE_KEY:
