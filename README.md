@@ -1,8 +1,8 @@
 # Citrate Python SDK
 
-The official Python SDK for the Citrate AI blockchain platform. Deploy AI models, manage learning pools, stake SALT, create classrooms, post compute jobs, and interact with the verified compute marketplace.
+The official Python SDK for the Citrate distributed AI network. Deploy AI models, manage learning pools, stake SALT, create classrooms, post compute jobs, and interact with the verified compute marketplace.
 
-**Version**: 0.3.0 | **Tests**: 51 learning/compute + existing unit tests | **Token**: SALT (native gas)
+**Version**: 0.5.0 | **Chain ID**: 40204 (0x9d0c) | **Token**: SALT
 
 ## Installation
 
@@ -17,12 +17,12 @@ from citrate_sdk import CitrateClient
 
 # Connect to Citrate testnet
 client = CitrateClient(
-    rpc_url="http://localhost:8545",
+    rpc_url="https://rpc.citrate.ai",
     private_key="0x..."  # Optional: for signing transactions
 )
 
 # Check balance
-balance = client.get_balance()
+balance = client.get_balance("0xYOUR_ADDRESS")
 print(f"Balance: {balance} SALT")
 
 # List learning pools
@@ -152,12 +152,15 @@ print(f"Output: {result.output_data}")
 ```python
 # Local devnet
 client = CitrateClient("http://localhost:8545")
+local_chain_id = client.get_chain_id()
 
 # Testnet
 client = CitrateClient("https://rpc.citrate.ai", private_key="0x...")
 ```
 
-**Chain ID**: 40204 | **Token**: SALT | **Block time**: ~2 seconds
+Use `get_chain_id()` on localhost instead of assuming every local profile uses the public testnet chain ID.
+
+**Public testnet chain ID**: 40204 | **Token**: SALT | **Block time**: ~2 seconds
 
 ## Testing
 
