@@ -12,7 +12,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="citrate-ai-sdk",
-    version="0.4.0",
+    version="0.5.0",
     author="Citrate Team",
     author_email="developers@citrate.ai",
     description="Python SDK for Citrate AI blockchain platform",
