@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "citrate-ai-sdk"
 version = "0.5.0"
-description = "Python SDK for the Citrate distributed AI network"
+description = "Non-canonical Python SDK for the Citrate distributed AI network. The canonical SDK is citrate-js (TypeScript). This Python SDK is opt-in and may lag behind the canonical SDK."
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "Apache-2.0"}
@@ -17,7 +17,7 @@ maintainers = [
 ]
 keywords = ["citrate", "distributed-ai", "ai", "dag", "web3", "machine-learning"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",

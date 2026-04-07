@@ -59,11 +59,11 @@ class TestCitrateClient:
 
     @patch('requests.Session.post')
     def test_get_chain_id(self, mock_post):
-        """Test chain ID retrieval"""
+        """Test chain ID retrieval — mocks testnet beta (40204 = 0x9d0c)."""
         mock_response = Mock()
         mock_response.json.return_value = {
             "jsonrpc": "2.0",
-            "result": "0x539",  # 1337 in hex
+            "result": "0x9d0c",  # 40204 — testnet beta
             "id": 1
         }
         mock_response.raise_for_status.return_value = None
@@ -72,7 +72,7 @@ class TestCitrateClient:
         client = CitrateClient(self.mock_rpc_url)
         chain_id = client.get_chain_id()
 
-        assert chain_id == "0x539"
+        assert chain_id == "0x9d0c"
 
     @patch('requests.Session.post')
     def test_get_balance(self, mock_post):
