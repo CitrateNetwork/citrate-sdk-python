@@ -85,6 +85,8 @@ class CitrateClient:
             raise CitrateError(f"Network error: {str(e)}")
         except json.JSONDecodeError as e:
             raise CitrateError(f"Invalid JSON response: {str(e)}")
+        except Exception as e:
+            raise CitrateError(f"Network error: {str(e)}")
 
     def get_chain_id(self) -> int:
         """Get blockchain chain ID"""
@@ -234,7 +236,7 @@ class CitrateClient:
         return InferenceResult(
             model_id=model_id,
             output_data=output_data,
-            gas_used=receipt.get("gasUsed", 0),
+            gas_used=int(receipt["gasUsed"], 16) if isinstance(receipt.get("gasUsed"), str) else receipt.get("gasUsed", 0),
             execution_time=receipt.get("executionTime", 0),
             tx_hash=tx_hash
         )

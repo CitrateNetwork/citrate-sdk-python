@@ -140,10 +140,18 @@ class ShamirSecretSharing:
         Returns:
             List of (x, share_bytes) tuples
         """
-        shares = []
+        # Generate one polynomial per secret byte and reuse it for every share.
+        # Re-rolling coefficients per share makes reconstruction impossible.
+        polynomials = []
+        for secret_byte in secret:
+            coefficients = [secret_byte]
+            for _ in range(1, self.threshold):
+                coefficients.append(random.randint(0, 255))
+            polynomials.append(coefficients)
 
+        shares = []
         for i in range(1, self.total_shares + 1):
-            share_bytes = self._evaluate_polynomial_at_point(secret, i)
+            share_bytes = self._evaluate_polynomial_at_point(polynomials, i)
             shares.append((i, share_bytes))
 
         return shares
@@ -181,22 +189,13 @@ class ShamirSecretSharing:
 
         return bytes(secret_bytes)
 
-    def _evaluate_polynomial_at_point(self, secret: bytes, x: int) -> bytes:
+    def _evaluate_polynomial_at_point(self, polynomials: List[List[int]], x: int) -> bytes:
         """
         Evaluate polynomial at point x for each byte of the secret
         """
-        # Generate random coefficients for polynomial
-        # f(x) = a0 + a1*x + a2*x^2 + ... + a(k-1)*x^(k-1)
-        # where a0 is the secret byte and k is the threshold
-
         share_bytes = []
 
-        for secret_byte in secret:
-            # Generate random coefficients (except a0 which is the secret)
-            coefficients = [secret_byte]
-            for _ in range(1, self.threshold):
-                coefficients.append(random.randint(0, 255))
-
+        for coefficients in polynomials:
             # Evaluate polynomial at x
             result = 0
             x_power = 1

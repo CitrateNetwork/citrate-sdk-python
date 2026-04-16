@@ -10,6 +10,8 @@ The official Python SDK for the Citrate distributed AI network. Deploy AI models
 pip install citrate-sdk
 ```
 
+Python `3.10+` is the supported runtime for the current non-canonical SDK build.
+
 ## Quick Start
 
 ```python
