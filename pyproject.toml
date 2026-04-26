@@ -1,3 +1,12 @@
+# RM-G2.5 (audit SUP-01/02/03): pyproject.toml is the single source
+# of truth for this package's dependencies. The legacy `setup.py`
+# and `requirements.txt` were removed in this sprint — they
+# independently re-declared a subset of these deps with weaker
+# version bounds, so a `pip install -r requirements.txt` could
+# silently pin an older incompatible web3 (e.g., 6.x against the
+# 7.15 the SDK actually targets). PEP 621 says pyproject is canonical;
+# this package now follows that.
+
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -29,12 +38,21 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: System :: Distributed Computing",
 ]
+# RM-G2.5 (audit SUP-02): numpy bumped from ~=1.21 to ~=2.0.
+# numpy 1.x went into security-only mode mid-2024; new pip resolvers
+# would still resolve to 1.26 against the old bound, but downstream
+# packages (pandas 2.2+, web3 7.15's transitive eth-tester) have
+# started rejecting 1.x. Pinning ~=2.0 avoids drift the user can't
+# easily override.
+#
+# RM-G2.5 (audit SUP-03): web3 + eth-account already match the
+# canonical bounds — kept here for future audit reference.
 dependencies = [
     "requests~=2.33",
     "cryptography~=46.0",
     "eth-account~=0.9",
     "web3~=7.15",
-    "numpy~=1.21",
+    "numpy~=2.0",
     "typing-extensions~=4.0",
 ]
 
