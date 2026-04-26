@@ -57,13 +57,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# RM-K / WP-K1.8 (Codex M-08): pre-K1.8 the dev extra pinned
+# `isort>=8.0.1`, but the published isort line stops at 5.x — the
+# 8.x constraint silently broke `pip install '.[dev]'`. Aligned to
+# `isort>=5.13,<7` (5.x is the stable line; 6.x is the imminent
+# next major). `ruff` already covers the import-sort lint via
+# the "I" rule (see [tool.ruff.lint] block below) so keeping a
+# loose isort range avoids constraining the dev environment.
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
     "black>=23.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
-    "isort>=8.0.1",
+    "isort>=5.13,<7",
     "coverage>=7.0",
 ]
 docs = [
