@@ -9,5 +9,4 @@ permissions:
 
 jobs:
   python:
-    if: hashFiles('pyproject.toml') != ''
     uses: CitrateNetwork/.github/.github/workflows/reusable-python-ci.yml@main
