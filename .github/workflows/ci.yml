@@ -1,0 +1,13 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    if: hashFiles('pyproject.toml') != ''
+    uses: CitrateNetwork/.github/.github/workflows/reusable-python-ci.yml@main
