@@ -3,7 +3,7 @@ Finite field arithmetic for Shamir's Secret Sharing
 Using GF(2^8) for byte-oriented operations
 """
 
-import random
+import secrets
 from typing import List, Tuple
 
 
@@ -146,7 +146,11 @@ class ShamirSecretSharing:
         for secret_byte in secret:
             coefficients = [secret_byte]
             for _ in range(1, self.threshold):
-                coefficients.append(random.randint(0, 255))
+                # CSPRNG (secrets/os.urandom), never the non-cryptographic
+                # `random` module. Shamir secrecy depends on unpredictable
+                # coefficients. secrets is fail-closed (raises if no OS entropy
+                # source). Audit: CITRATE_SDK_PYTHON-2026-05-31-002.
+                coefficients.append(secrets.randbelow(256))
             polynomials.append(coefficients)
 
         shares = []

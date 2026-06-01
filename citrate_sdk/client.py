@@ -273,13 +273,18 @@ class CitrateClient:
         )
 
     def _upload_to_ipfs(self, data: bytes) -> str:
-        """Upload data to IPFS and return hash"""
+        """Upload data to IPFS and return the content identifier (CID)."""
         try:
             return upload_to_ipfs(data)
         except Exception as e:
-            # Fallback to local hash if IPFS is unavailable
-            print(f"Warning: IPFS upload failed ({e}), using local hash fallback")
-            return f"fallback_{hashlib.sha256(data).hexdigest()}"
+            # FAIL CLOSED. Previously this fabricated a `fallback_<sha256>`
+            # pseudo-CID and returned it as if the upload succeeded — a
+            # non-retrievable reference that silently entered deployment
+            # metadata and downstream flows. Surface the failure instead.
+            # Audit: CITRATE_SDK_PYTHON-B-2026-05-31-003.
+            raise CitrateError(
+                f"IPFS upload failed and no verifiable fallback is permitted: {e}"
+            ) from e
 
     def _send_transaction(
         self,
