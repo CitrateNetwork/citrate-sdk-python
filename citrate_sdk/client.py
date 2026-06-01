@@ -182,7 +182,8 @@ class CitrateClient:
         model_id: str,
         input_data: Dict[str, Any],
         encrypted: bool = False,
-        max_gas: int = 1000000
+        max_gas: int = 1000000,
+        recipient_public_key: str = None
     ) -> InferenceResult:
         """
         Execute inference on deployed model.
@@ -192,6 +193,11 @@ class CitrateClient:
             input_data: Input data for inference
             encrypted: Whether to use encrypted inference
             max_gas: Maximum gas limit for execution
+            recipient_public_key: REQUIRED when ``encrypted=True`` — the
+                model/recipient public key (hex) the symmetric key is
+                ECDH-wrapped to. Without it the encrypted path fails closed
+                (CITRATE_SDK_PYTHON-001): the SDK will not ship a key in
+                cleartext on public calldata.
 
         Returns:
             InferenceResult with outputs and metadata
@@ -199,7 +205,8 @@ class CitrateClient:
         Raises:
             ModelNotFoundError: If model doesn't exist
             InsufficientFundsError: If insufficient funds for inference
-            CitrateError: For other execution errors
+            CitrateError: For other execution errors (incl. encrypted=True
+                without recipient_public_key)
         """
         # Prepare inference request
         request = InferenceRequest(
@@ -209,9 +216,13 @@ class CitrateClient:
             timestamp=int(time.time())
         )
 
-        # Encrypt input if needed
+        # Encrypt input if needed. CITRATE_SDK_PYTHON-001: the symmetric key
+        # is ECDH-wrapped to recipient_public_key and never shipped raw; the
+        # call fails closed if no recipient key is supplied.
         if encrypted and self.key_manager:
-            encrypted_input = self.key_manager.encrypt_data(json.dumps(input_data))
+            encrypted_input = self.key_manager.encrypt_data(
+                json.dumps(input_data), recipient_public_key
+            )
             request.input_data = {"encrypted": encrypted_input}
 
         # Call inference precompile (0x0101)

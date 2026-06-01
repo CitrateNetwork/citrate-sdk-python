@@ -154,8 +154,31 @@ class KeyManager:
         except Exception as e:
             raise CitrateError(f"Model decryption failed: {str(e)}")
 
-    def encrypt_data(self, data: str) -> str:
-        """Encrypt arbitrary string data"""
+    # CITRATE_SDK_PYTHON-2026-05-31-001: envelope scheme tag for the
+    # ECDH-wrapped format. The pre-fix envelope shipped the AES key in
+    # cleartext ("key") next to the ciphertext — on public, permanent EVM
+    # calldata that is zero confidentiality. The symmetric key is now
+    # ECDH-wrapped to the recipient's public key and never appears raw.
+    ECDH_SCHEME_V1 = "ecdh-secp256k1-aesgcm-v1"
+
+    def encrypt_data(self, data: str, recipient_public_key: str = None) -> str:
+        """Encrypt arbitrary string data, ECDH-wrapping the symmetric key to
+        ``recipient_public_key`` (hex). The raw key is NEVER included in the
+        returned envelope.
+
+        CITRATE_SDK_PYTHON-001: a recipient public key is REQUIRED. Shipping
+        the symmetric key alongside the ciphertext provided no confidentiality
+        on public calldata; rather than fabricate confidentiality we fail
+        closed when no recipient is supplied.
+        """
+        if not recipient_public_key:
+            raise CitrateError(
+                "encrypt_data requires recipient_public_key: the symmetric key "
+                "is ECDH-wrapped to the recipient and never shipped in cleartext "
+                "(CITRATE_SDK_PYTHON-001). Resolve the model/recipient public key "
+                "before requesting encrypted inference."
+            )
+
         data_bytes = data.encode('utf-8')
         key = secrets.token_bytes(32)
         nonce = secrets.token_bytes(12)
@@ -163,28 +186,61 @@ class KeyManager:
         aesgcm = AESGCM(key)
         ciphertext = aesgcm.encrypt(nonce, data_bytes, None)
 
-        # Package with key and nonce
+        # ECDH-wrap the symmetric key to the recipient. shared =
+        # HKDF(ECDH(sender_priv, recipient_pub)); the recipient re-derives the
+        # same secret from HKDF(ECDH(recipient_priv, sender_pub)).
+        shared = self.derive_shared_key(recipient_public_key)
+        wrap_nonce = secrets.token_bytes(12)
+        wrapped_key = AESGCM(shared).encrypt(wrap_nonce, key, None)
+
         package = {
+            "scheme": self.ECDH_SCHEME_V1,
             "ciphertext": ciphertext.hex(),
             "nonce": nonce.hex(),
-            "key": key.hex()
+            "wrapped_key": wrapped_key.hex(),
+            "wrap_nonce": wrap_nonce.hex(),
+            "sender_public_key": self.ecdh_manager.get_public_key_uncompressed().hex(),
+            "recipient_public_key": recipient_public_key,
         }
 
         return json.dumps(package)
 
     def decrypt_data(self, encrypted_package: str) -> str:
-        """Decrypt string data from encrypt_data"""
+        """Decrypt string data from encrypt_data.
+
+        Supports the ECDH-wrapped envelope and, for backward-compatible READS
+        only, the legacy cleartext-key envelope. New envelopes are never
+        produced in the legacy form.
+        """
         try:
             package = json.loads(encrypted_package)
             ciphertext = bytes.fromhex(package["ciphertext"])
             nonce = bytes.fromhex(package["nonce"])
-            key = bytes.fromhex(package["key"])
+
+            if "wrapped_key" in package:
+                # ECDH-wrapped path: re-derive the shared secret from the
+                # sender's public key + our private key, then unwrap.
+                shared = self.derive_shared_key(package["sender_public_key"])
+                wrap_nonce = bytes.fromhex(package["wrap_nonce"])
+                wrapped_key = bytes.fromhex(package["wrapped_key"])
+                key = AESGCM(shared).decrypt(wrap_nonce, wrapped_key, None)
+            elif "key" in package:
+                # Legacy insecure envelope (CITRATE_SDK_PYTHON-001). The key
+                # was public anyway; read it for back-compat but never produce
+                # this form.
+                key = bytes.fromhex(package["key"])
+            else:
+                raise CitrateError(
+                    "unrecognized encrypted envelope (no wrapped_key/key)"
+                )
 
             aesgcm = AESGCM(key)
             plaintext = aesgcm.decrypt(nonce, ciphertext, None)
 
             return plaintext.decode('utf-8')
 
+        except CitrateError:
+            raise
         except Exception as e:
             raise CitrateError(f"Data decryption failed: {str(e)}")
 
