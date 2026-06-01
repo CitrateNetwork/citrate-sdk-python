@@ -53,22 +53,31 @@ class TestKeyManager:
         assert all(c in "0123456789abcdef" for c in public_key)
 
     def test_encrypt_decrypt_data_roundtrip(self):
-        """Test data encryption/decryption roundtrip"""
+        """Test data encryption/decryption roundtrip.
+
+        CITRATE_SDK_PYTHON-001: encrypt_data now ECDH-wraps the key to a
+        recipient public key (the raw key is never shipped). Self-encrypt
+        (sender == recipient) round-trips via the recipient's own key.
+        """
         key_manager = KeyManager()
+        recipient = key_manager.ecdh_manager.get_public_key_uncompressed().hex()
         original_data = "This is sensitive information"
 
-        encrypted_data = key_manager.encrypt_data(original_data)
+        encrypted_data = key_manager.encrypt_data(original_data, recipient)
         decrypted_data = key_manager.decrypt_data(encrypted_data)
 
         assert decrypted_data == original_data
         assert encrypted_data != original_data
+        # The symmetric key must NEVER appear in the envelope.
+        assert "\"key\"" not in encrypted_data
 
     def test_encrypt_decrypt_unicode_data(self):
         """Test encryption/decryption with unicode characters"""
         key_manager = KeyManager()
+        recipient = key_manager.ecdh_manager.get_public_key_uncompressed().hex()
         original_data = "Test with émojis 🔒 and ünïcödé"
 
-        encrypted_data = key_manager.encrypt_data(original_data)
+        encrypted_data = key_manager.encrypt_data(original_data, recipient)
         decrypted_data = key_manager.decrypt_data(encrypted_data)
 
         assert decrypted_data == original_data
