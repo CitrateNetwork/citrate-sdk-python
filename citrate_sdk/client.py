@@ -44,6 +44,9 @@ class CitrateClient:
 
         self.key_manager = KeyManager(private_key) if private_key else None
         self._request_id = 0
+        # RM-G.4 — cached EIP-155 chain id, bound into every signed tx so a
+        # signature cannot be replayed on another network.
+        self._chain_id: Optional[int] = None
 
     def _next_request_id(self) -> int:
         """Get next JSON-RPC request ID"""
@@ -297,6 +300,17 @@ class CitrateClient:
                 f"IPFS upload failed and no verifiable fallback is permitted: {e}"
             ) from e
 
+    def _eip155_chain_id(self) -> int:
+        """Resolve + cache the chain id for EIP-155 transaction signing
+        (RM-G.4). Fetched once via eth_chainId; normalized to int."""
+        if self._chain_id is None:
+            raw = self.get_chain_id()
+            if isinstance(raw, str):
+                self._chain_id = int(raw, 16) if raw.startswith("0x") else int(raw)
+            else:
+                self._chain_id = int(raw)
+        return self._chain_id
+
     def _send_transaction(
         self,
         to_address: str,
@@ -312,7 +326,9 @@ class CitrateClient:
         from_address = self.key_manager.get_address()
         nonce = self.get_nonce(from_address)
 
-        # Build transaction
+        # Build transaction. RM-G.4: bind chainId so the signature is
+        # EIP-155 (domain-separated) and cannot be replayed on another
+        # Citrate network — the pre-fix tx omitted chainId (pre-EIP-155).
         tx = {
             "from": from_address,
             "to": to_address,
@@ -320,7 +336,8 @@ class CitrateClient:
             "gas": hex(gas_limit),
             "gasPrice": hex(20_000_000_000),  # 20 gwei
             "nonce": hex(nonce),
-            "data": "0x" + json.dumps(data).encode().hex()
+            "data": "0x" + json.dumps(data).encode().hex(),
+            "chainId": self._eip155_chain_id(),
         }
 
         # Sign transaction
