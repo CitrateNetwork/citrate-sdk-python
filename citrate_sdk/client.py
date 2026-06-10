@@ -14,6 +14,7 @@ from .models import ModelConfig, ModelDeployment, InferenceRequest, InferenceRes
 from .crypto import EncryptionConfig, KeyManager
 from .errors import CitrateError, ModelNotFoundError, InsufficientFundsError
 from .ipfs import upload_to_ipfs
+from ._url_security import enforce_transport_security
 
 
 class CitrateClient:
@@ -27,14 +28,22 @@ class CitrateClient:
     - Payment and revenue sharing
     """
 
-    def __init__(self, rpc_url: str = "http://localhost:8545", private_key: Optional[str] = None):
+    def __init__(self, rpc_url: str = "http://localhost:8545", private_key: Optional[str] = None,
+                 allow_insecure_http: bool = False):
         """
         Initialize Citrate client.
 
         Args:
             rpc_url: RPC endpoint URL
             private_key: Optional private key for transactions
+            allow_insecure_http: SECREM-01 WEB-4 (pre-audit 2026-06-09) —
+                silence the cleartext-transport warning when intentionally
+                using plain http:// to a remote RPC host. Localhost http:// is
+                always allowed silently. Defaults to False (warn on remote http).
         """
+        # SECREM-01 WEB-4: warn when an RPC endpoint sends signed transactions /
+        # private inputs to a remote host over plaintext http://.
+        rpc_url = enforce_transport_security(rpc_url, allow_insecure_http=allow_insecure_http)
         self.rpc_url = rpc_url.rstrip('/')
         self.session = requests.Session()
         self.session.headers.update({
