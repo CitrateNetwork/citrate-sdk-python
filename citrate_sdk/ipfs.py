@@ -7,6 +7,7 @@ import json
 import hashlib
 from typing import Optional, Dict, Any
 from .errors import CitrateError, IPFSError
+from ._url_security import enforce_transport_security
 
 
 class IPFSClient:
@@ -14,13 +15,21 @@ class IPFSClient:
     Real IPFS client for uploading and retrieving model data
     """
 
-    def __init__(self, api_url: str = "http://localhost:5001"):
+    def __init__(self, api_url: str = "http://localhost:5001",
+                 allow_insecure_http: bool = False):
         """
         Initialize IPFS client
 
         Args:
             api_url: IPFS API endpoint URL
+            allow_insecure_http: SECREM-01 WEB-4 (pre-audit 2026-06-09) —
+                silence the cleartext-transport warning when intentionally
+                using plain http:// to a remote IPFS API host. Localhost
+                http:// is always allowed silently. Defaults to False.
         """
+        # SECREM-01 WEB-4: warn when uploading/fetching over plaintext http://
+        # to a remote IPFS node.
+        api_url = enforce_transport_security(api_url, allow_insecure_http=allow_insecure_http)
         self.api_url = api_url.rstrip('/')
         self.session = requests.Session()
         self.session.headers.update({
@@ -206,16 +215,23 @@ class IPFSManager:
     """
 
     def __init__(self, primary_url: str = "http://localhost:5001",
-                 fallback_urls: Optional[list] = None):
+                 fallback_urls: Optional[list] = None,
+                 allow_insecure_http: bool = False):
         """
         Initialize IPFS manager with primary and fallback nodes
 
         Args:
             primary_url: Primary IPFS node URL
             fallback_urls: List of fallback IPFS node URLs
+            allow_insecure_http: SECREM-01 WEB-4 (pre-audit 2026-06-09) —
+                forwarded to every underlying IPFSClient so remote http://
+                fallbacks are also covered by the cleartext-transport warning.
         """
-        self.primary = IPFSClient(primary_url)
-        self.fallbacks = [IPFSClient(url) for url in (fallback_urls or [])]
+        self.primary = IPFSClient(primary_url, allow_insecure_http=allow_insecure_http)
+        self.fallbacks = [
+            IPFSClient(url, allow_insecure_http=allow_insecure_http)
+            for url in (fallback_urls or [])
+        ]
         self.active_client = None
 
     def upload(self, data: bytes) -> str:
