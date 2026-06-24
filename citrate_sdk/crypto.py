@@ -3,9 +3,10 @@ Cryptographic utilities for Citrate SDK
 """
 
 import hashlib
+import hmac
 import secrets
 import json
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, Optional
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -17,6 +18,22 @@ from eth_account.signers.local import LocalAccount
 from .errors import CitrateError
 from .finite_field import split_secret_bytes, reconstruct_secret_bytes
 from .ecdh_real import ECDHManager
+
+
+def _zeroize(buf: Optional[bytearray]) -> None:
+    """Best-effort in-place wipe of key material (SECREM-02 K3 /
+    FUA-SDK-PY-03).
+
+    HONEST LIMITS (CPython): this only clears the bytearray we hold.
+    Immutable ``bytes`` snapshots handed to AESGCM/HKDF, interned copies,
+    and interpreter-internal buffers cannot be wiped from Python, and the
+    GC may have already duplicated pages. This narrows the exposure
+    window; it is NOT a guarantee the KEK is gone from process memory.
+    """
+    if buf is None:
+        return
+    for i in range(len(buf)):
+        buf[i] = 0
 
 
 class KeyManager:
