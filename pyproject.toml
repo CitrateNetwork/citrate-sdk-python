@@ -97,6 +97,9 @@ exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 citrate_sdk = ["py.typed", "*.pyi"]
+# The vendored federation contract artifact (DEVX-S0) must ship in the wheel; contract.py
+# reads it at runtime via importlib/Path, so it is not importable Python and needs package-data.
+"citrate_sdk._generated" = ["*.json"]
 
 # Black formatting
 [tool.black]
