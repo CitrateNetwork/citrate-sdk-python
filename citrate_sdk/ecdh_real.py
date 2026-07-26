@@ -47,12 +47,20 @@ class ECDHManager:
 
     def get_public_key_compressed(self) -> bytes:
         """
-        Get compressed public key (33 bytes)
+        Get compressed public key — standard SEC1 (33 bytes).
+
+        SECREM-02 K3 / FUA-SDK-PY-01 (root cause: prior -007): this used to
+        return the bare 32-byte x-coordinate, which is AMBIGUOUS — a given x
+        has two candidate points (even/odd Y) and consumers had to guess.
+        The canonical SDK encoding is now SEC1 compressed: 0x02 (even Y) or
+        0x03 (odd Y) prefix + 32-byte big-endian X.
 
         Returns:
-            Compressed public key bytes
+            33-byte SEC1 compressed public key
         """
-        return self.public_key.public_numbers().x.to_bytes(32, 'big')
+        numbers = self.public_key.public_numbers()
+        prefix = b'\x03' if numbers.y % 2 else b'\x02'
+        return prefix + numbers.x.to_bytes(32, 'big')
 
     def get_public_key_uncompressed(self) -> bytes:
         """
@@ -71,21 +79,30 @@ class ECDHManager:
         Perform ECDH key exchange with peer's public key
 
         Args:
-            peer_public_key_bytes: Peer's public key (32 or 33 or 65 bytes)
+            peer_public_key_bytes: Peer's public key, SEC1-encoded
+                (33-byte compressed or 65-byte uncompressed)
 
         Returns:
             32-byte shared secret
 
         Raises:
-            CitrateError: If ECDH fails
+            CitrateError: If ECDH fails or the key encoding is ambiguous
         """
         try:
-            # Parse peer public key based on length
+            # Parse peer public key based on length.
+            #
+            # SECREM-02 K3 / FUA-SDK-PY-01: the 32-byte x-only branch is
+            # deliberately GONE. A bare x-coordinate has two candidate Y
+            # parities and the removed code guessed even-Y. Decoding must be
+            # deterministic — only unambiguous SEC1 forms are accepted; an
+            # x-only key fails closed.
             if len(peer_public_key_bytes) == 32:
-                # Compressed x-coordinate only
-                x = int.from_bytes(peer_public_key_bytes, 'big')
-                y = self._recover_y_coordinate(x)
-                peer_public_numbers = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256K1())
+                raise CitrateError(
+                    "ambiguous 32-byte x-only public key rejected: a bare "
+                    "x-coordinate has two candidate Y parities (FUA-SDK-PY-01). "
+                    "Supply SEC1 compressed (33 bytes, 0x02/0x03 prefix) or "
+                    "uncompressed (65 bytes, 0x04 prefix)."
+                )
 
             elif len(peer_public_key_bytes) == 33:
                 # Compressed format with prefix
@@ -116,6 +133,8 @@ class ECDHManager:
 
             return shared_key
 
+        except CitrateError:
+            raise
         except Exception as e:
             raise CitrateError(f"ECDH key exchange failed: {str(e)}")
 
@@ -147,13 +166,17 @@ class ECDHManager:
 
         return hkdf.derive(shared_key)
 
-    def _recover_y_coordinate(self, x: int, is_odd: bool = False) -> int:
+    def _recover_y_coordinate(self, x: int, is_odd: bool) -> int:
         """
-        Recover y coordinate from x coordinate for secp256k1 curve
+        Recover y coordinate from x coordinate for secp256k1 curve.
+
+        SECREM-02 K3: `is_odd` is REQUIRED (no default). Every caller must
+        carry the parity from an explicit SEC1 prefix — a default would
+        silently re-introduce the FUA-SDK-PY-01 even-Y guess.
 
         Args:
             x: X coordinate
-            is_odd: Whether to use odd y coordinate
+            is_odd: Whether to use odd y coordinate (from the SEC1 prefix)
 
         Returns:
             Y coordinate
