@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "citrate-ai-sdk"
-version = "0.5.0"
+version = "0.6.0"
 description = "Non-canonical Python SDK for the Citrate distributed AI network. The canonical SDK is citrate-js (TypeScript). This Python SDK is opt-in and may lag behind the canonical SDK."
 readme = "README.md"
 requires-python = ">=3.10"

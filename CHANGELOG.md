@@ -3,7 +3,7 @@
 All notable changes to `citrate-ai-sdk` are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — DevX Convergence (2026-07-25)
+## [0.6.0] - 2026-07-26 — DevX Convergence
 
 ### Added
 - **Federation contract artifact** (`citrate_sdk._generated.contract`): the single source of
