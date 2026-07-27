@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `citrate-ai-sdk` are documented here. This project adheres to
+All notable changes to `citrate-labs-sdk` are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
 ## [0.6.0] - 2026-07-26 — DevX Convergence
