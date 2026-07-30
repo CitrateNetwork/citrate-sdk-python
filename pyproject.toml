@@ -13,8 +13,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "citrate-labs-sdk"
-version = "0.6.0"
-description = "Non-canonical Python SDK for the Citrate distributed AI network. The canonical SDK is citrate-js (TypeScript). This Python SDK is opt-in and may lag behind the canonical SDK."
+version = "0.6.1"
+description = "Python SDK for the Citrate Network — an AI-native Layer-1 BlockDAG. Chain reads, embedded wallets, the compute marketplace, and x402 metered payments."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
@@ -83,9 +83,9 @@ docs = [
 [project.urls]
 Homepage = "https://citrate.ai"
 Documentation = "https://docs.citrate.ai"
-Repository = "https://github.com/SaulBuilds/citrate"
-"Bug Tracker" = "https://github.com/SaulBuilds/citrate/issues"
-Changelog = "https://github.com/SaulBuilds/citrate/blob/main/CHANGELOG.md"
+Repository = "https://github.com/CitrateNetwork/citrate-sdk-python"
+"Bug Tracker" = "https://github.com/CitrateNetwork/citrate-sdk-python/issues"
+Changelog = "https://github.com/CitrateNetwork/citrate-sdk-python/blob/main/CHANGELOG.md"
 
 [project.scripts]
 citrate = "citrate_sdk.cli:main"

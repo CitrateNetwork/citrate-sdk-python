@@ -3,6 +3,21 @@
 All notable changes to `citrate-labs-sdk` are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-07-29 — package metadata correction
+
+### Fixed
+- **Package summary no longer misdescribes the SDK.** It called this package
+  "Non-canonical" and named `citrate-js` as the canonical SDK. `citrate-js` is
+  deprecated — the TypeScript SDK is `@citratelabs/sdk` — so the summary was
+  pointing users at a dead package. The live PyPI listing carried this text through
+  0.6.0; this is the release that corrects it.
+- **`project.urls` pointed at the pre-split repository.** Repository, Bug Tracker,
+  and Changelog referenced `github.com/SaulBuilds/citrate`, which is not where this
+  code lives. They now point at `CitrateNetwork/citrate-sdk-python`.
+- **`citrate_sdk.__version__` reported `0.5.0` while the package was `0.6.0`.**
+  Anything introspecting the version at runtime — user bug reports, telemetry,
+  compatibility checks — got the wrong answer. Both now read from the same release.
+
 ## [0.6.0] - 2026-07-26 — DevX Convergence
 
 ### Added
