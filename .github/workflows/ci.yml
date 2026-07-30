@@ -10,3 +10,33 @@ permissions:
 jobs:
   python:
     uses: CitrateNetwork/.github/.github/workflows/reusable-python-ci.yml@main
+
+  # CL-C2 / SW-092: fail the build if the vendored federation_contract artifact
+  # drifts from the canonical federation intermediate (which federation's
+  # contract-artifact-drift gate keeps fresh vs citrate-chain). The reusable
+  # python CI only runs ruff/mypy/pytest, so vendored-address drift shipped
+  # silently. Requires a read-only token for CitrateNetwork/citrate-federation;
+  # inert until GitHub Actions + CITRATE_FEDERATION_READ_TOKEN are available (the
+  # local mirror scripts/check-contract-drift.sh runs the identical check).
+  contract-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: citrate-sdk-python
+      - name: Checkout canonical citrate-federation intermediate (sparse)
+        uses: actions/checkout@v4
+        with:
+          repository: CitrateNetwork/citrate-federation
+          ref: main
+          token: ${{ secrets.CITRATE_FEDERATION_READ_TOKEN }}
+          path: citrate-federation
+          sparse-checkout: |
+            contract
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Contract-artifact drift gate (blocking)
+        run: python scripts/sync_contract.py --check
+        working-directory: citrate-sdk-python
