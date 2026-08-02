@@ -3,6 +3,70 @@
 All notable changes to `citrate-labs-sdk` are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-08-02 — SECREM-02 K3 envelope hardening
+
+**0.6.0 is YANKED.** It shipped with seven SECREM-02 K3 security tripwires
+failing. They were committed red-first (`ac3bfc1`, marked `wip`) and the
+implementation never followed; the release went out 33 days later. Details and
+proof-of-concept in
+`citrate-security/audits/2026-08-02-sdk-python-k3-addendum/`.
+
+### Security
+
+- **`ECDH_SCHEME_V2`** replaces V1 for all new envelopes. V1 derived the
+  key-encryption key from a **constant** HKDF salt over the sender's **static**
+  identity key, so the KEK was identical for a given (sender, recipient) pair
+  forever. That is not an immediate break — each envelope still had a fresh
+  `wrap_nonce` — but it meant **one compromise of the sender's private key
+  decrypted every envelope ever sent to that recipient.** V2 mixes a fresh
+  32-byte `kdf_salt` per envelope, so a key compromise is confined to a single
+  message.
+- **Both endpoint public keys are now bound into the HKDF `info`.** Previously
+  `recipient_public_key` rode in the envelope unauthenticated — a PoC confirmed
+  it could be overwritten with `00`×65 and decryption still succeeded with
+  identical plaintext. It looked like a control and was not one. Tampering with
+  either key field, or with the salt, now changes the derived KEK and the
+  AES-GCM unwrap fails its tag check.
+- **The legacy cleartext-key envelope is refused on read.** Producing it stopped
+  in 2026-06; reading it did not, so the downgrade survived the fix meant to
+  close it. An envelope carrying BOTH `wrapped_key` and a cleartext `key` is
+  now rejected outright rather than silently preferring the safe field.
+- **V1 envelopes are refused.** Fail closed and re-encrypt.
+- `verify_model_integrity` uses `hmac.compare_digest` instead of `==`.
+- KEKs are zeroized best-effort after use (see `_zeroize` for honest limits).
+
+### Added
+
+- **`decrypt_data(..., expected_sender_public_key=...)`** — pin the sender.
+  Static-static ECDH already guarantees the envelope was produced by the holder
+  of `sender_public_key`; relabelling someone else's envelope as a trusted
+  sender's is refused. What it cannot tell you is whether that key is one you
+  trust — anyone may send you a valid envelope under their own key. Pass this
+  whenever origin matters.
+- **`CitrateClient(timeout=...)`** — the JSON-RPC timeout was hardcoded to 30s
+  with no way to change it.
+
+### Fixed
+
+- **`list_models()` returned the raw RPC dict** `{"models": [...]}` despite
+  being annotated `-> List[Dict]`. `for m in client.list_models()` iterated
+  **dict keys** and yielded the string `"models"` — no exception, silently
+  wrong. It now unwraps.
+- Nine long-broken tests repaired rather than left red: `test_get_public_key`
+  asserted a pre-SEC1 32-byte key; three tests called `sign_message`, which does
+  not exist; the timeout test set `session.timeout`, which `requests` ignores;
+  four balance tests asserted Anvil devnet funding against chain 40204 and now
+  skip unless the account is actually funded. A suite where nine failures are
+  expected noise is a suite nobody reads, which is how seven real ones survived
+  a release.
+
+### BREAKING
+
+- Envelopes produced before 0.6.1 (V1 or legacy) can no longer be decrypted.
+  Nothing that was ever confidential is lost: legacy envelopes shipped their key
+  in public calldata, and V1 envelopes remain readable by anyone who compromises
+  the sender's static key. **Re-encrypt.**
+
 ## [0.6.0] - 2026-07-26 — DevX Convergence
 
 ### Added

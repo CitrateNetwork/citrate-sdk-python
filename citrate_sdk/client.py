@@ -29,7 +29,7 @@ class CitrateClient:
     """
 
     def __init__(self, rpc_url: str = "http://localhost:8545", private_key: Optional[str] = None,
-                 allow_insecure_http: bool = False):
+                 allow_insecure_http: bool = False, timeout: float = 30.0):
         """
         Initialize Citrate client.
 
@@ -40,7 +40,15 @@ class CitrateClient:
                 silence the cleartext-transport warning when intentionally
                 using plain http:// to a remote RPC host. Localhost http:// is
                 always allowed silently. Defaults to False (warn on remote http).
+            timeout: Per-request timeout in seconds for every JSON-RPC call.
+                Was hardcoded to 30 with no way to change it, which meant a
+                caller with a latency budget had no lever and a hung RPC held
+                the caller for the full 30s. Note that `requests.Session` has no
+                honoured `timeout` attribute — setting `client.session.timeout`
+                does nothing, which is exactly the mistake the old timeout test
+                made. It must be passed per request, as it now is.
         """
+        self.timeout = timeout
         # SECREM-01 WEB-4: warn when an RPC endpoint sends signed transactions /
         # private inputs to a remote host over plaintext http://.
         rpc_url = enforce_transport_security(rpc_url, allow_insecure_http=allow_insecure_http)
@@ -84,7 +92,7 @@ class CitrateClient:
         }
 
         try:
-            response = self.session.post(self.rpc_url, json=payload, timeout=30)
+            response = self.session.post(self.rpc_url, json=payload, timeout=self.timeout)
             response.raise_for_status()
 
             data = response.json()

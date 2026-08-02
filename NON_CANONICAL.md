@@ -47,7 +47,16 @@ way to get them, whatever language your project is in.
 ## Status
 
 - Canonical: **NO**
-- CI status: opt-in only (runs on `workflow_dispatch` with `run_noncanonical=true`)
+- CI status: **runs on every push and pull request** and `pytest` is BLOCKING
+  (`.github/workflows/ci.yml` -> `reusable-python-ci.yml`). Corrected
+  2026-08-02: this line claimed opt-in `workflow_dispatch` CI, which was
+  wrong and actively misleading — it was cited as the explanation for how
+  0.6.0 shipped over seven failing security tests. The real reasons are
+  worse and are recorded in the audit: this repo's last SUCCESSFUL run was
+  2026-06-10 (before the K3 tests existed), every run since ~2026-07-26 is
+  `startup_failure` at 0s, and the publish workflow — which correctly gates
+  `build` on `needs: test` — has NEVER run, so 0.6.0 was uploaded manually
+  around the gate.
 - Feature parity: **not guaranteed**
 - Support: **best effort only**
 
