@@ -31,7 +31,17 @@ def test_encrypt_data_never_ships_cleartext_key():
     # The pre-fix envelope contained a raw "key"; the fix must not.
     assert "key" not in pkg, "symmetric key must never be in the envelope"
     assert "wrapped_key" in pkg and "sender_public_key" in pkg
-    assert pkg["scheme"] == KeyManager.ECDH_SCHEME_V1
+    # Pins the CURRENT scheme, not a frozen string. This asserted
+    # ECDH_SCHEME_V1 literally, which was a proxy for "the wrapped form" — so
+    # when K3 landed V2 (fresh per-envelope kdf_salt + endpoint-key binding)
+    # this failed despite the invariant it exists to protect being strictly
+    # better satisfied. The invariant is "no cleartext key, and the envelope
+    # names the scheme this SDK produces"; the version number is not the point.
+    assert pkg["scheme"] == KeyManager.ECDH_SCHEME_V2
+    assert pkg["scheme"] != KeyManager.ECDH_SCHEME_V1, (
+        "V1 derived its KEK from a constant salt with no endpoint binding and "
+        "must never be produced again"
+    )
 
 
 def test_encrypt_data_fails_closed_without_recipient():
