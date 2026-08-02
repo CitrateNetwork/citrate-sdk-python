@@ -48,6 +48,12 @@ proof-of-concept in
 
 ### Fixed
 
+- **`citrate_sdk.__version__` was stuck at `"0.5.0"`.** The published 0.6.0 wheel
+  reports itself as 0.5.0 — the 0.5.0 to 0.6.0 bump edited `pyproject.toml` and
+  nothing else, so every runtime version check against the published package got
+  an answer a full release stale. `pip show` and `importlib.metadata` read
+  pyproject while application code reads `__version__`, so the two only
+  disagreed where nobody was looking. Now pinned together by a test.
 - **`list_models()` returned the raw RPC dict** `{"models": [...]}` despite
   being annotated `-> List[Dict]`. `for m in client.list_models()` iterated
   **dict keys** and yielded the string `"models"` — no exception, silently
