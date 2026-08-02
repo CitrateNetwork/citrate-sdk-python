@@ -92,3 +92,25 @@ def test_non_canonical_doc_does_not_point_readers_at_a_dead_path() -> None:
         "outside of its correction note."
     )
     assert "CitrateNetwork/citrate-sdk-js" in body
+
+
+def test_package_version_matches_pyproject(project: dict) -> None:
+    """`citrate_sdk.__version__` must equal the version actually being built.
+
+    THE DEFECT (found 2026-08-02): the PUBLISHED 0.6.0 wheel reports
+    `__version__ == "0.5.0"`. The 0.5.0 -> 0.6.0 bump changed pyproject.toml and
+    nothing else, so every runtime version check against the published package
+    got an answer that was a full release stale.
+
+    Nothing caught it because nothing compared the two. `pip show` and
+    `importlib.metadata` read pyproject, while application code reads
+    `__version__` — the two sources only disagree where nobody was looking, which
+    is the same shape as every other finding in this repo's 2026-08-02 audit.
+    """
+    import citrate_sdk
+
+    assert citrate_sdk.__version__ == project["version"], (
+        f"citrate_sdk.__version__ is {citrate_sdk.__version__!r} but pyproject "
+        f"declares {project['version']!r}. A bump that touches only one of these "
+        f"ships a package that misreports itself at runtime."
+    )
