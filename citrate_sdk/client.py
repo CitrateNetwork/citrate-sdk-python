@@ -275,9 +275,20 @@ class CitrateClient:
         return result
 
     def list_models(self, owner: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-        """List deployed models"""
+        """List deployed models.
+
+        SEC-037: the node answers `{"models": [...]}`, but this is annotated
+        (and used) as a list. Returning the raw dict meant `for m in
+        list_models()` iterated DICT KEYS and yielded the string "models" — no
+        exception, silently wrong, and the shape integrators report as "the SDK
+        returns nothing". Unwrap, and tolerate a bare list in case the node's
+        shape changes back.
+        """
         params = [owner, limit] if owner else [limit]
-        return self._rpc_call("citrate_listModels", params)
+        result = self._rpc_call("citrate_listModels", params)
+        if isinstance(result, dict):
+            return result.get("models", [])
+        return result or []
 
     def purchase_model_access(self, model_id: str, payment_amount: int) -> str:
         """Purchase access to a paid model"""
