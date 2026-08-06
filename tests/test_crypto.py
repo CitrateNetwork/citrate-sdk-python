@@ -45,11 +45,21 @@ class TestKeyManager:
         assert len(address) == 42
 
     def test_get_public_key(self):
-        """Test public key generation"""
+        """Public key is SEC1 COMPRESSED: 33 bytes = 66 hex chars.
+
+        This asserted 64 hex chars (a prefix-less, x-only encoding) until
+        2026-08-02. The code was corrected to SEC1 compressed in ac3bfc1 —
+        deliberately, because the x-only form carried no Y parity and made
+        `perform_ecdh` guess (FUA-SDK-PY-01) — and this test was never updated.
+        It has been red ever since, and a suite with expected-red tests is a
+        suite nobody reads, which is how seven real K3 tripwires survived a
+        release. The code was right; the assertion was stale.
+        """
         key_manager = KeyManager()
         public_key = key_manager.get_public_key()
 
-        assert len(public_key) == 64  # 32 bytes in hex
+        assert len(public_key) == 66, "SEC1 compressed = 33 bytes = 66 hex chars"
+        assert public_key[:2] in ("02", "03"), "SEC1 parity prefix required"
         assert all(c in "0123456789abcdef" for c in public_key)
 
     def test_encrypt_decrypt_data_roundtrip(self):

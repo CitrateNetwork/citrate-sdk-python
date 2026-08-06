@@ -178,6 +178,59 @@ class KeyManager:
     # ECDH-wrapped to the recipient's public key and never appears raw.
     ECDH_SCHEME_V1 = "ecdh-secp256k1-aesgcm-v1"
 
+    # SECREM-02 K3 / SEC-2026-08-02-031,033,034. V1 wrapped the symmetric key to
+    # the recipient — which fixed the original finding (the key was in public
+    # calldata) — but derived the KEK from a CONSTANT HKDF salt over the sender's
+    # STATIC identity key. The KEK was therefore identical for a given
+    # (sender, recipient) pair forever: one compromise of the sender's private
+    # key retroactively decrypts every envelope ever sent to that recipient.
+    #
+    # V1 also carried `recipient_public_key` without binding it. An audit PoC
+    # confirmed the field could be overwritten with 0x00*65 and decryption still
+    # succeeded, returning identical plaintext — it looked like a control and was
+    # not one.
+    #
+    # V2 fixes both: a fresh 32-byte `kdf_salt` per envelope, and BOTH endpoint
+    # public keys bound into the HKDF `info`. Tampering with either the salt or
+    # a key field changes the derived KEK, so the AES-GCM unwrap fails its tag
+    # check instead of being silently ignored.
+    #
+    # SENDER AUTHENTICATION — what this scheme does and does not give you.
+    #
+    # Static-static ECDH authenticates the sender IMPLICITLY: the KEK is
+    # ECDH(sender_priv, recipient_pub) == ECDH(recipient_priv, sender_pub), so
+    # only a party holding the private key matching `sender_public_key` can
+    # produce an envelope that unwraps. Relabelling someone else's envelope with
+    # a trusted sender's public key is therefore REFUSED — the KEK no longer
+    # matches and the AEAD tag fails. (Verified: see the audit PoC.)
+    #
+    # What it does NOT give you is a REASON TO TRUST that key. Anyone can mint a
+    # valid envelope under their OWN keypair, and `decrypt_data` will happily
+    # return the plaintext. A caller that reads a successful decrypt as "this
+    # came from someone I trust" is wrong.
+    #
+    # So pass `expected_sender_public_key` to `decrypt_data` whenever origin
+    # matters. Without it the call still succeeds — the API cannot know whether
+    # the caller has an out-of-band expectation — but the sender is then
+    # unverified by construction.
+    ECDH_SCHEME_V2 = "ecdh-secp256k1-aesgcm-v2"
+
+    @staticmethod
+    def _kek_info(sender_public_key: str, recipient_public_key: str) -> bytes:
+        """HKDF `info` binding both endpoint keys into the derived KEK.
+
+        The EXACT envelope strings are used, not re-encoded points: the two
+        sides must agree byte-for-byte, and a public key has several valid
+        encodings (compressed/uncompressed) that would otherwise derive
+        different KEKs for the same key pair.
+        """
+        return (
+            b"citrate-ecdh-v2|"
+            + sender_public_key.encode("utf-8")
+            + b"|"
+            + recipient_public_key.encode("utf-8")
+        )
+
     def encrypt_data(self, data: str, recipient_public_key: str = None) -> str:
         """Encrypt arbitrary string data, ECDH-wrapping the symmetric key to
         ``recipient_public_key`` (hex). The raw key is NEVER included in the
@@ -203,53 +256,153 @@ class KeyManager:
         aesgcm = AESGCM(key)
         ciphertext = aesgcm.encrypt(nonce, data_bytes, None)
 
-        # ECDH-wrap the symmetric key to the recipient. shared =
-        # HKDF(ECDH(sender_priv, recipient_pub)); the recipient re-derives the
-        # same secret from HKDF(ECDH(recipient_priv, sender_pub)).
-        shared = self.derive_shared_key(recipient_public_key)
+        # ECDH-wrap the symmetric key to the recipient (V2). The KEK is
+        # HKDF(ECDH(sender_priv, recipient_pub), salt=kdf_salt, info=both keys);
+        # the recipient re-derives it from ECDH(recipient_priv, sender_pub) plus
+        # the salt and key fields carried in the envelope.
+        kdf_salt = secrets.token_bytes(32)
+        sender_public_key = self.ecdh_manager.get_public_key_uncompressed().hex()
+        shared = self.derive_shared_key(
+            recipient_public_key,
+            salt=kdf_salt,
+            info=self._kek_info(sender_public_key, recipient_public_key),
+        )
         wrap_nonce = secrets.token_bytes(12)
-        wrapped_key = AESGCM(shared).encrypt(wrap_nonce, key, None)
+        try:
+            wrapped_key = AESGCM(shared).encrypt(wrap_nonce, key, None)
+        finally:
+            # Best-effort wipe of the KEK. See _zeroize for the honest limits —
+            # this narrows the window, it does not guarantee erasure.
+            _zeroize(bytearray(shared))
 
         package = {
-            "scheme": self.ECDH_SCHEME_V1,
+            "scheme": self.ECDH_SCHEME_V2,
             "ciphertext": ciphertext.hex(),
             "nonce": nonce.hex(),
             "wrapped_key": wrapped_key.hex(),
             "wrap_nonce": wrap_nonce.hex(),
-            "sender_public_key": self.ecdh_manager.get_public_key_uncompressed().hex(),
+            "kdf_salt": kdf_salt.hex(),
+            "sender_public_key": sender_public_key,
             "recipient_public_key": recipient_public_key,
         }
 
         return json.dumps(package)
 
-    def decrypt_data(self, encrypted_package: str) -> str:
-        """Decrypt string data from encrypt_data.
+    def decrypt_data(
+        self,
+        encrypted_package: str,
+        expected_sender_public_key: Optional[str] = None,
+    ) -> str:
+        """Decrypt a V2 ECDH-wrapped envelope. FAILS CLOSED on anything else.
 
-        Supports the ECDH-wrapped envelope and, for backward-compatible READS
-        only, the legacy cleartext-key envelope. New envelopes are never
-        produced in the legacy form.
+        Args:
+            encrypted_package: the JSON envelope from ``encrypt_data``.
+            expected_sender_public_key: hex public key the envelope MUST claim.
+                Pass this whenever origin matters. Static-static ECDH already
+                guarantees the envelope was produced by the holder of
+                `sender_public_key` — an attacker cannot relabel their envelope
+                as coming from someone else — but it cannot tell you whether
+                that key is one you trust. Anybody may send you a perfectly
+                valid envelope under their own key.
+
+                Omitting this is allowed, because the SDK cannot know whether
+                the caller has an out-of-band expectation. But a decrypt without
+                it authenticates nothing about WHO, and callers routinely read
+                success as trust. If you have an expected sender, say so.
+
+        SECREM-02 K3 / SEC-2026-08-02-032. This used to accept the legacy
+        cleartext-key envelope "for backward-compatible READS only". An audit
+        PoC confirmed the consequence: an attacker-supplied envelope carrying a
+        raw key of their choosing decrypted successfully. Producing the legacy
+        form had been stopped in 2026-06; reading it had not, so the downgrade
+        survived the fix that was supposed to close it.
+
+        It also accepted V1, whose KEK derives from a constant salt with no
+        binding of the endpoint keys. Both are now refused.
+
+        MIGRATION: pre-V2 envelopes are no longer decryptable. Nothing is lost
+        that was ever confidential — legacy-form envelopes shipped their key in
+        public calldata, and V1 envelopes remain readable by anyone who ever
+        compromises the sender's static key. Re-encrypt rather than reaching for
+        a compatibility flag.
         """
         try:
             package = json.loads(encrypted_package)
+
+            # A cleartext `key` is hostile by construction — checked FIRST, and
+            # before the scheme, so an envelope carrying BOTH a wrapped_key and
+            # a cleartext key is rejected outright rather than silently
+            # preferring one. Preferring the safe field would still be
+            # processing an envelope that has been tampered with.
+            if "key" in package:
+                raise CitrateError(
+                    "Data decryption failed: refusing a cleartext-key envelope. The "
+                    "symmetric key must "
+                    "be ECDH-wrapped to the recipient. An envelope carrying a "
+                    "raw key is either pre-2026-06 (never confidential — "
+                    "re-encrypt it) or forged."
+                )
+
+            scheme = package.get("scheme")
+            if scheme != self.ECDH_SCHEME_V2:
+                raise CitrateError(
+                    f"Data decryption failed: unsupported envelope scheme {scheme!r}. "
+                    f"This SDK reads "
+                    f"only {self.ECDH_SCHEME_V2}. V1 envelopes derived their key "
+                    f"from a constant salt with no binding of the endpoint keys "
+                    f"and are refused; re-encrypt with a current SDK."
+                )
+
+            if "kdf_salt" not in package:
+                raise CitrateError(
+                    "Data decryption failed: envelope is missing kdf_salt. A V2 "
+                    "envelope without a "
+                    "per-message salt is malformed or stripped"
+                )
+
+            for field in ("ciphertext", "nonce", "wrapped_key", "wrap_nonce",
+                          "sender_public_key", "recipient_public_key"):
+                if field not in package:
+                    raise CitrateError(f"Data decryption failed: envelope is missing required field {field!r}")
+
+            # Sender pinning, when the caller has an expectation. Compared
+            # BEFORE any key derivation so a mismatch costs nothing and cannot
+            # be distinguished by timing from a malformed envelope. The
+            # comparison is constant-time out of habit rather than necessity —
+            # both values are public keys.
+            if expected_sender_public_key is not None:
+                if not hmac.compare_digest(
+                    package["sender_public_key"].lower(),
+                    expected_sender_public_key.lower(),
+                ):
+                    raise CitrateError(
+                        "Data decryption failed: envelope sender does not match the "
+                        "expected sender. "
+                        "refusing to decrypt. The envelope is cryptographically "
+                        "valid but was produced by a different keypair."
+                    )
+
             ciphertext = bytes.fromhex(package["ciphertext"])
             nonce = bytes.fromhex(package["nonce"])
 
-            if "wrapped_key" in package:
-                # ECDH-wrapped path: re-derive the shared secret from the
-                # sender's public key + our private key, then unwrap.
-                shared = self.derive_shared_key(package["sender_public_key"])
-                wrap_nonce = bytes.fromhex(package["wrap_nonce"])
-                wrapped_key = bytes.fromhex(package["wrapped_key"])
+            # Re-derive the KEK. Both endpoint keys and the salt come from the
+            # envelope and all three feed the derivation, so tampering with any
+            # of them yields a different KEK and the unwrap below fails its tag
+            # check. That is the binding: it is enforced by the AEAD, not by a
+            # comparison we could forget to make.
+            shared = self.derive_shared_key(
+                package["sender_public_key"],
+                salt=bytes.fromhex(package["kdf_salt"]),
+                info=self._kek_info(
+                    package["sender_public_key"], package["recipient_public_key"]
+                ),
+            )
+            wrap_nonce = bytes.fromhex(package["wrap_nonce"])
+            wrapped_key = bytes.fromhex(package["wrapped_key"])
+            try:
                 key = AESGCM(shared).decrypt(wrap_nonce, wrapped_key, None)
-            elif "key" in package:
-                # Legacy insecure envelope (CITRATE_SDK_PYTHON-001). The key
-                # was public anyway; read it for back-compat but never produce
-                # this form.
-                key = bytes.fromhex(package["key"])
-            else:
-                raise CitrateError(
-                    "unrecognized encrypted envelope (no wrapped_key/key)"
-                )
+            finally:
+                _zeroize(bytearray(shared))
 
             aesgcm = AESGCM(key)
             plaintext = aesgcm.decrypt(nonce, ciphertext, None)
@@ -261,12 +414,24 @@ class KeyManager:
         except Exception as e:
             raise CitrateError(f"Data decryption failed: {str(e)}")
 
-    def derive_shared_key(self, peer_public_key: str) -> bytes:
+    def derive_shared_key(
+        self,
+        peer_public_key: str,
+        *,
+        salt: Optional[bytes] = None,
+        info: Optional[bytes] = None,
+    ) -> bytes:
         """
         Derive shared key using ECDH.
 
         Args:
             peer_public_key: Hex-encoded peer public key
+            salt: HKDF salt. Envelope callers pass a FRESH per-message salt
+                (SEC-034). The legacy constant is retained only as the default
+                for direct callers doing plain key agreement, where both sides
+                must reach the same value with nothing to carry between them.
+            info: HKDF info. Envelope callers bind both endpoint public keys
+                here so a swapped key field changes the derived KEK.
 
         Returns:
             32-byte shared key
@@ -275,8 +440,8 @@ class KeyManager:
             peer_key_bytes = bytes.fromhex(peer_public_key)
             return self.ecdh_manager.derive_shared_secret(
                 peer_key_bytes,
-                salt=b"citrate-model-encryption",
-                info=b"shared-key-derivation"
+                salt=b"citrate-model-encryption" if salt is None else salt,
+                info=b"shared-key-derivation" if info is None else info,
             )
 
         except Exception as e:
@@ -387,6 +552,13 @@ def hash_model_data(data: bytes) -> str:
 
 
 def verify_model_integrity(data: bytes, expected_hash: str) -> bool:
-    """Verify model data integrity against expected hash"""
+    """Verify model data integrity against expected hash.
+
+    SEC-036: uses ``hmac.compare_digest`` rather than ``==``. Python's string
+    equality short-circuits on the first differing byte, so the comparison time
+    leaks how much of the digest matched. The values here are hashes rather than
+    secrets, which is why this was LOW — but the fix costs one call and removes
+    the question.
+    """
     actual_hash = hash_model_data(data)
-    return actual_hash == expected_hash
+    return hmac.compare_digest(actual_hash, expected_hash)

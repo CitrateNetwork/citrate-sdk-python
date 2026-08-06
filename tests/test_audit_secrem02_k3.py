@@ -242,3 +242,72 @@ def test_verify_model_integrity_behavior():
     data = b"model-bytes"
     assert verify_model_integrity(data, hash_model_data(data)) is True
     assert verify_model_integrity(data, hash_model_data(b"other")) is False
+
+
+# ── SEC-2026-08-02-031: sender identity — what ECDH gives, and what it does not ──
+
+
+def test_relabelling_an_envelope_with_a_trusted_sender_key_is_refused():
+    """Static-static ECDH authenticates the sender IMPLICITLY.
+
+    The KEK is ECDH(sender_priv, recipient_pub) == ECDH(recipient_priv,
+    sender_pub), so only the holder of the private key matching
+    `sender_public_key` can produce an envelope that unwraps. Mallory cannot
+    take her own valid envelope and relabel it as Alice's.
+
+    This test exists because the 2026-08-02 audit initially claimed the envelope
+    had NO sender authentication. That was overstated — the PoC only showed
+    Mallory speaking AS HERSELF. This pins the property that was actually there
+    all along, so nobody "fixes" it twice or weakens it by accident.
+    """
+    victim = _fresh_recipient()
+    alice = _fresh_recipient()
+    mallory = _fresh_recipient()
+
+    victim_pub = victim.ecdh_manager.get_public_key_uncompressed().hex()
+    alice_pub = alice.ecdh_manager.get_public_key_uncompressed().hex()
+
+    pkg = json.loads(mallory.encrypt_data("payload", victim_pub))
+    pkg["sender_public_key"] = alice_pub  # claim to be Alice
+
+    with pytest.raises(CitrateError):
+        victim.decrypt_data(json.dumps(pkg))
+
+
+def test_an_unknown_sender_can_still_send_a_valid_envelope():
+    """The residual issue, pinned as behaviour rather than left implicit.
+
+    Anyone holding the recipient's PUBLIC key can mint a valid envelope under
+    their own keypair. Decryption succeeds. That is not a flaw in the crypto —
+    it is what encryption to a public key means — but a caller who reads
+    success as "this came from someone I trust" is wrong, which is why
+    `expected_sender_public_key` exists.
+    """
+    victim = _fresh_recipient()
+    stranger = _fresh_recipient()
+    victim_pub = victim.ecdh_manager.get_public_key_uncompressed().hex()
+
+    envelope = stranger.encrypt_data("unsolicited", victim_pub)
+    assert victim.decrypt_data(envelope) == "unsolicited"
+
+
+def test_expected_sender_pinning_refuses_a_stranger():
+    victim = _fresh_recipient()
+    alice = _fresh_recipient()
+    stranger = _fresh_recipient()
+    victim_pub = victim.ecdh_manager.get_public_key_uncompressed().hex()
+    alice_pub = alice.ecdh_manager.get_public_key_uncompressed().hex()
+
+    envelope = stranger.encrypt_data("unsolicited", victim_pub)
+    with pytest.raises(CitrateError):
+        victim.decrypt_data(envelope, expected_sender_public_key=alice_pub)
+
+
+def test_expected_sender_pinning_accepts_the_real_sender():
+    victim = _fresh_recipient()
+    alice = _fresh_recipient()
+    victim_pub = victim.ecdh_manager.get_public_key_uncompressed().hex()
+    alice_pub = alice.ecdh_manager.get_public_key_uncompressed().hex()
+
+    envelope = alice.encrypt_data("hello", victim_pub)
+    assert victim.decrypt_data(envelope, expected_sender_public_key=alice_pub) == "hello"
