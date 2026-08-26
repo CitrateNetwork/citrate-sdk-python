@@ -8,33 +8,44 @@ classrooms, compute marketplace, treasury, and farming operations.
 """
 
 from .client import CitrateClient
-from .models import ModelConfig, ModelDeployment, InferenceRequest, InferenceResult, ModelType, AccessType
-from .crypto import EncryptionConfig, KeyManager
-from .errors import CitrateError, ModelNotFoundError, InsufficientFundsError
-
-# LC.5.3: Learning / Staking / Classroom managers
-from .learning import LearningManager, StakingManager, ClassroomManager
 
 # COMPUTE-4: Compute marketplace manager
 from .compute import ComputeManager
+from .crypto import EncryptionConfig, KeyManager
+from .errors import CitrateError, InsufficientFundsError, ModelNotFoundError
+from .farming import FarmingManager
+
+# LC.5.3: Learning / Staking / Classroom managers
+from .learning import ClassroomManager, LearningManager, StakingManager
+
+# Memory — typed client for a citrate-memories gateway ("git for agents"):
+# OIDC REST (recall/search/neighbors/verify/review/assert/layout) + BYOM MCP.
+from .memory import ByomMemoryClient, MemoryClient, MemoryError
+from .models import (
+    AccessType,
+    InferenceRequest,
+    InferenceResult,
+    ModelConfig,
+    ModelDeployment,
+    ModelType,
+)
 
 # ECON-2: Treasury and farming managers
 from .treasury import TreasuryManager
-from .farming import FarmingManager
 
 # Shared data types for learning / staking / classroom / compute
 from .types import (
-    LearningPool,
-    CycleStatus,
-    Contributions,
-    ContributionDetail,
-    StakingInfo,
-    PendingWithdrawal,
     ClassroomInfo,
     ComputeJob,
-    ProviderInfo,
     ComputePool,
+    ContributionDetail,
+    Contributions,
+    CycleStatus,
     Dispute,
+    LearningPool,
+    PendingWithdrawal,
+    ProviderInfo,
+    StakingInfo,
 )
 
 __version__ = "0.6.1"
@@ -66,6 +77,10 @@ __all__ = [
     # ECON-2: Treasury and farming managers
     "TreasuryManager",
     "FarmingManager",
+    # Memory clients
+    "MemoryClient",
+    "ByomMemoryClient",
+    "MemoryError",
     # Data types
     "LearningPool",
     "CycleStatus",
