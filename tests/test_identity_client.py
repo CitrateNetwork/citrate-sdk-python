@@ -92,10 +92,24 @@ def test_userinfo_commercial_kyc_caps():
     assert info.wallet_address == "0x1615Af127952c4e4987D7b597bDD7cb8B49aFB89"
 
 
-def test_userinfo_role_all_caps():
+def test_userinfo_role_does_not_grant_all_caps():
+    # RC-8 (SPY-B-002): the old fixture asserted a `citrateRole` at tier `public`
+    # yielded confidential_docs=True through the identity spine — it encoded the
+    # over-broad grant. A role must NOT escalate; capabilities derive from the tier.
     body = {"sub": "a", ID["entitlementClaim"]: {"tier": "public", "citrateRole": "auditor"}}
     c = IdentityClient(client_id=CLIENT_ID, redirect_uri="x", transport=_make_transport(body))
     info = c.user_info("at-1")
+    assert info.tier == "public"
+    assert info.capabilities.confidential_docs is False
+    assert info.capabilities.ecosystem_tx is False
+
+
+def test_userinfo_confidential_tier_grants_confidential_docs():
+    # Legitimate access is preserved: a real confidential-tier principal still passes.
+    body = {"sub": "a", ID["entitlementClaim"]: {"tier": "confidential"}}
+    c = IdentityClient(client_id=CLIENT_ID, redirect_uri="x", transport=_make_transport(body))
+    info = c.user_info("at-1")
+    assert info.tier == "confidential"
     assert info.capabilities.confidential_docs is True
 
 
