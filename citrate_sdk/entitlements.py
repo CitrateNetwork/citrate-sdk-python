@@ -37,6 +37,18 @@ DEFAULT_CAPABILITIES: Dict[str, CapabilitySet] = {
 
 _TIER_SET = set(TIERS)
 
+#: EXPLICIT allowlist of `citrateRole` values that carry capabilities beyond the
+#: principal's tier, replacing the blanket ``if claim.get("citrateRole"): return True``
+#: bypass that granted EVERY capability — including ``confidential_docs`` — to ANY truthy
+#: role (SPY-B-002 / SJS-B-001). A role absent from this map does NOT escalate:
+#: capabilities fall back to the tier, the same fail-safe ``normalize_tier`` applies to
+#: unknown tiers. The authority's ``resolveEntitlementClaim`` (citrate-identity
+#: src/entitlements.ts) uses ``citrateRole`` only to exempt a principal from the
+#: consumer-KYC *downgrade*; the tier it returns is what confers capabilities, so a role
+#: never itself buys confidential access. The canonical default is therefore empty. A
+#: relying party that genuinely elevates a specific role registers it here explicitly.
+ROLE_CAPABILITIES: Dict[str, CapabilitySet] = {}
+
 
 def normalize_tier(value: object) -> str:
     """Fail-safe: unknown/garbage/non-str collapses to ``public``. Never escalates."""
@@ -50,19 +62,40 @@ def capabilities(tier: object, overrides: Optional[Mapping[str, CapabilitySet]] 
     return DEFAULT_CAPABILITIES[t]
 
 
+def capabilities_for_claim(
+    claim: Optional[dict],
+    overrides: Optional[Mapping[str, CapabilitySet]] = None,
+) -> CapabilitySet:
+    """Resolve a claim's capability set WITHOUT the truthiness bypass.
+
+    An allowlisted ``citrateRole`` grants its explicitly declared set; every other
+    role (and no role) derives capabilities from the tier — fail-safe, never escalated.
+    Expiry is NOT applied here; callers that must honour ``expiresAt`` (see ``can``)
+    check it before calling. This is the single resolver both ``can`` and the identity
+    spine use so the policy cannot diverge between them.
+    """
+    if not claim:
+        return DEFAULT_CAPABILITIES["public"]
+    role = claim.get("citrateRole")
+    if isinstance(role, str) and role in ROLE_CAPABILITIES:
+        return ROLE_CAPABILITIES[role]
+    return capabilities(claim.get("tier"), overrides)
+
+
 def can(
     claim: Optional[dict],
     capability: str,
     now_ms: Optional[int] = None,
     overrides: Optional[Mapping[str, CapabilitySet]] = None,
 ) -> bool:
-    """Whether a claim grants a capability, with expiry + role-bypass (matches resolveEntitlementClaim)."""
+    """Whether a claim grants a capability. Expired claims collapse to ``public``; a
+    ``citrateRole`` escalates only if it is in the ``ROLE_CAPABILITIES`` allowlist,
+    otherwise capabilities derive from the tier (matches resolveEntitlementClaim, which
+    uses the role only to skip the KYC downgrade, never to confer confidential access)."""
     if not claim:
         return getattr(DEFAULT_CAPABILITIES["public"], capability)
     now = now_ms if now_ms is not None else int(time.time() * 1000)
     exp = claim.get("expiresAt")
     if isinstance(exp, (int, float)) and exp <= now:
         return getattr(DEFAULT_CAPABILITIES["public"], capability)
-    if claim.get("citrateRole"):
-        return True
-    return getattr(capabilities(claim.get("tier"), overrides), capability)
+    return getattr(capabilities_for_claim(claim, overrides), capability)
