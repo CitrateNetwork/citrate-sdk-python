@@ -117,15 +117,11 @@ def main():
         print(f"  Total inferences: {model_info.get('total_inferences', 0)}")
         print(f"  Revenue: {model_info.get('total_revenue', 0) / 10**18} ETH")
 
-        # Purchase model access
-        print(f"\n💳 Buyer: Purchasing access to model...")
-
-        purchase_tx = buyer.purchase_model_access(
-            model_id=deployment.model_id,
-            payment_amount=config.access_price
-        )
-
-        print(f"✅ Access purchased! Transaction: {purchase_tx}")
+        # SPY-B-001: model-access purchase has no node-confirmed on-chain
+        # precompile, so purchase_model_access() fails closed rather than
+        # burning the buyer's payment to a non-precompile address. The demo
+        # skips the purchase step until a real access-purchase route is wired.
+        print(f"\n💳 Buyer: (access-purchase skipped — no on-chain purchase precompile yet; SPY-B-001)")
 
         # Wait for transaction confirmation
         print("Waiting for transaction confirmation...")
@@ -165,11 +161,9 @@ def main():
             print(f"User {i+1}: Purchasing and using model...")
 
             try:
-                # Purchase access
-                purchase_tx = buyer_client.purchase_model_access(
-                    model_id=deployment.model_id,
-                    payment_amount=config.access_price
-                )
+                # SPY-B-001: purchase step skipped — purchase_model_access
+                # fails closed (no on-chain access-purchase precompile yet;
+                # it previously burned the payment to a non-precompile address).
 
                 # Run inference
                 result = buyer_client.inference(

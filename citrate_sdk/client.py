@@ -299,19 +299,23 @@ class CitrateClient:
         return result or []
 
     def purchase_model_access(self, model_id: str, payment_amount: int) -> str:
-        """Purchase access to a paid model"""
-        if not self.key_manager:
-            raise CitrateError("Private key required for purchases")
+        """Purchase access to a paid model.
 
-        tx_data = {
-            "model_id": model_id,
-            "payment_amount": payment_amount
-        }
-
-        return self._send_transaction(
-            "0x0100000000000000000000000000000000000104",  # Access control precompile
-            tx_data,
-            value=payment_amount
+        SPY-B-001 (fail closed): this previously signed and broadcast a
+        transaction sending the buyer's full ``payment_amount`` as ``value`` to
+        ``0x0100000000000000000000000000000000000104`` -- an address absent from
+        the canonical precompile table this package vendors
+        (``federation_contract()["precompiles"]``: 0x..0100-0103, 0105+, but no
+        0104), so the funds left the buyer's account with nothing able to credit
+        the purchase (destroyed funds). No node-confirmed access-purchase
+        precompile exists, so this path raises and moves no money until a real
+        on-chain purchase route is wired.
+        """
+        raise CitrateError(
+            "purchase_model_access is unavailable: no node-confirmed "
+            "access-purchase precompile exists (SPY-B-001). Refusing to sign or "
+            "broadcast a transaction that would send funds to a non-precompile "
+            "address and destroy the payment."
         )
 
     def _upload_to_ipfs(self, data: bytes) -> str:
