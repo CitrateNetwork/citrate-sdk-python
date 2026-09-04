@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 import requests
 
 from .._generated import contract as _contract
-from ..entitlements import CapabilitySet, capabilities, normalize_tier
+from ..entitlements import CapabilitySet, capabilities_for_claim, normalize_tier
 from .jwt import verify_id_token
 from .pkce import Pkce, create_pkce
 
@@ -165,7 +165,11 @@ class IdentityClient:
         raw = self._get_json(disc["userinfo_endpoint"], bearer=access_token)
         ent = raw.get(self._id["entitlementClaim"]) or {}
         tier = normalize_tier(ent.get("tier"))
-        caps = (CapabilitySet(True, True, True, True) if ent.get("citrateRole") else capabilities(tier))
+        # SPY-B-002: was `CapabilitySet(True, True, True, True) if ent.get("citrateRole")`,
+        # granting EVERY capability to any truthy role regardless of tier. Route through the
+        # single canonical resolver so a role escalates only via the ROLE_CAPABILITIES
+        # allowlist and otherwise derives capabilities from the tier — no inline duplicate.
+        caps = capabilities_for_claim(ent)
         wallets = raw.get("wallets") if isinstance(raw.get("wallets"), list) else None
         return UserInfo(
             sub=str(raw.get("sub", "")), tier=tier, capabilities=caps,
