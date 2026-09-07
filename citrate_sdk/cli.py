@@ -8,7 +8,9 @@ hand-typed.
     citrate wallet predict (--user-id 0x… | --uuid <uuid>) [--verify]
     citrate entitlement capabilities --tier <tier>
     citrate entitlement normalize --tier <value>
-    citrate gateway (models|health|chat --model M --message TEXT) [--api-key KEY]
+    citrate gateway (models|health|chat --model M --message TEXT) [--api-key-file PATH]
+        (the gateway key comes from $CITRATE_GATEWAY_API_KEY or --api-key-file,
+         never a --api-key value on argv — SPY-B-012)
 """
 from __future__ import annotations
 
@@ -78,7 +80,21 @@ def _cmd_entitlement(args: argparse.Namespace) -> int:
 
 
 def _cmd_gateway(args: argparse.Namespace) -> int:
-    key = args.api_key or os.environ.get("CITRATE_GATEWAY_API_KEY", "")
+    # SPY-B-012: never accept the gateway key as a command-line value — it would
+    # land in the process table (world-readable via `ps`) and in shell history.
+    # Read it from the env var, or from a file path (whose contents are not on
+    # argv). `-` reads one line from stdin.
+    key = os.environ.get("CITRATE_GATEWAY_API_KEY", "")
+    if not key and getattr(args, "api_key_file", None):
+        if args.api_key_file == "-":
+            key = sys.stdin.readline().strip()
+        else:
+            try:
+                with open(args.api_key_file, "r", encoding="utf-8") as fh:
+                    key = fh.read().strip()
+            except OSError as e:
+                print("error: cannot read --api-key-file: %s" % e, file=sys.stderr)
+                return 2
     try:
         client = GatewayClient(api_key=key)
         if args.action == "health":
@@ -117,11 +133,18 @@ def build_parser() -> argparse.ArgumentParser:
     pe.add_argument("--tier", required=True)
     pe.set_defaults(func=_cmd_entitlement)
 
-    pg = sub.add_parser("gateway", help="Inference gateway")
+    # SPY-B-012: allow_abbrev=False so a prefix like `--api-key` is NOT silently
+    # accepted as an abbreviation of `--api-key-file` — the removed value flag
+    # must stay removed, not resurrected by argparse prefix matching.
+    pg = sub.add_parser("gateway", help="Inference gateway", allow_abbrev=False)
     pg.add_argument("action", choices=["chat", "models", "health"])
     pg.add_argument("--model")
     pg.add_argument("--message")
-    pg.add_argument("--api-key", default="")
+    # SPY-B-012: no `--api-key` value flag — a secret on argv leaks via `ps` and
+    # shell history. The key comes from CITRATE_GATEWAY_API_KEY or --api-key-file
+    # (path, or `-` for stdin).
+    pg.add_argument("--api-key-file",
+                    help="path to a file containing the cgk_ gateway key, or - for stdin")
     pg.set_defaults(func=_cmd_gateway)
 
     return p

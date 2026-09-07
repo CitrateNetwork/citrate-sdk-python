@@ -31,9 +31,14 @@ def _b64url(obj) -> str:
     return base64.urlsafe_b64encode(json.dumps(obj).encode()).rstrip(b"=").decode("ascii")
 
 
-def _id_token():
+NONCE = "nonce-abc123"
+
+
+def _id_token(nonce=NONCE):
     header = {"alg": "RS256", "kid": KID, "typ": "JWT"}
     payload = {"iss": ID["issuer"], "sub": "user-1", "aud": CLIENT_ID, "exp": int(time.time()) + 3600}
+    if nonce is not None:
+        payload["nonce"] = nonce
     si = _b64url(header) + "." + _b64url(payload)
     return si + "." + base64.urlsafe_b64encode(_key.sign(si.encode(), padding.PKCS1v15(), hashes.SHA256())).rstrip(b"=").decode("ascii")
 
@@ -75,10 +80,31 @@ def test_authorize_url():
 
 def test_exchange_code_verifies_token():
     c = IdentityClient(client_id=CLIENT_ID, redirect_uri="x", transport=_make_transport({}))
-    tokens = c.exchange_code(code="abc", code_verifier="v" * 43)
+    # SPY-B-010: nonce is now required and is checked against the ID token's
+    # `nonce` claim (the token minted by the fixture carries NONCE).
+    tokens = c.exchange_code(code="abc", code_verifier="v" * 43, nonce=NONCE)
     assert tokens.claims["sub"] == "user-1"
     assert tokens.access_token == "at-1"
     assert tokens.refresh_token == "rt-1"
+
+
+def test_exchange_code_requires_nonce():
+    """SPY-B-010 tripwire: without a nonce the ID token is never bound to the
+    authorization request, so exchange_code must refuse rather than silently
+    skip the nonce check."""
+    import pytest
+    c = IdentityClient(client_id=CLIENT_ID, redirect_uri="x", transport=_make_transport({}))
+    with pytest.raises(Exception) as ei:
+        c.exchange_code(code="abc", code_verifier="v" * 43, nonce="")
+    assert "nonce" in str(ei.value).lower()
+
+
+def test_exchange_code_rejects_nonce_mismatch():
+    """A token whose nonce does not match the one from authorize_url is rejected."""
+    import pytest
+    c = IdentityClient(client_id=CLIENT_ID, redirect_uri="x", transport=_make_transport({}))
+    with pytest.raises(Exception):
+        c.exchange_code(code="abc", code_verifier="v" * 43, nonce="a-different-nonce")
 
 
 def test_userinfo_commercial_kyc_caps():

@@ -131,12 +131,18 @@ def main():
             "analysis_level": "detailed"
         }
 
-        # Execute encrypted inference
+        # Execute encrypted inference. SPY-B-011: `encrypted=True` REQUIRES a
+        # recipient_public_key — the symmetric key is ECDH-wrapped to it and
+        # never shipped in cleartext (the call fails closed otherwise). Here we
+        # wrap to the model owner's own public key for the demo; in production
+        # this is the model/node public key from the deployment record.
+        recipient_pubkey = client.key_manager.get_public_key()
         result = client.inference(
             model_id=deployment.model_id,
             input_data=sensitive_input,
             encrypted=True,
-            max_gas=1500000
+            max_gas=1500000,
+            recipient_public_key=recipient_pubkey,
         )
 
         print(f"✅ Encrypted inference completed!")
@@ -147,9 +153,12 @@ def main():
         # Demonstrate data encryption utilities
         print("\n🔐 Testing encryption utilities...")
 
-        # Encrypt arbitrary data
+        # Encrypt arbitrary data. SPY-B-011 / CITRATE_SDK_PYTHON-001:
+        # encrypt_data REQUIRES a recipient public key (the key is ECDH-wrapped
+        # to it, never shipped raw).
         test_data = "This is sensitive information that needs protection"
-        encrypted_data = client.key_manager.encrypt_data(test_data)
+        recipient_pubkey = client.key_manager.get_public_key()
+        encrypted_data = client.key_manager.encrypt_data(test_data, recipient_pubkey)
         decrypted_data = client.key_manager.decrypt_data(encrypted_data)
 
         print(f"Original: {test_data}")
