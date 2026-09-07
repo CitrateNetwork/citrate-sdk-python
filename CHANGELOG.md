@@ -16,11 +16,16 @@ proof-of-concept in
 - **`ECDH_SCHEME_V2`** replaces V1 for all new envelopes. V1 derived the
   key-encryption key from a **constant** HKDF salt over the sender's **static**
   identity key, so the KEK was identical for a given (sender, recipient) pair
-  forever. That is not an immediate break — each envelope still had a fresh
-  `wrap_nonce` — but it meant **one compromise of the sender's private key
-  decrypted every envelope ever sent to that recipient.** V2 mixes a fresh
-  32-byte `kdf_salt` per envelope, so a key compromise is confined to a single
-  message.
+  forever. V2 mixes a fresh 32-byte `kdf_salt` per envelope, so the KEK is no
+  longer **reused or correlatable** across messages to the same recipient.
+  **This is NOT forward secrecy (CIT-SDKPY-01).** The ECDH remains
+  static-static (the sender's static identity key × the recipient's fixed key),
+  and `kdf_salt` ships in the envelope in cleartext — so anyone who compromises
+  either static private key re-derives every past and future KEK from the public
+  salt and **still decrypts every envelope ever sent to that recipient.** The
+  per-message salt prevents KEK reuse; it does not confine a key compromise to a
+  single message. Forward secrecy would require an ephemeral per-message key
+  (ECIES), which V2 does not use.
 - **Both endpoint public keys are now bound into the HKDF `info`.** Previously
   `recipient_public_key` rode in the envelope unauthenticated — a PoC confirmed
   it could be overwritten with `00`×65 and decryption still succeeded with

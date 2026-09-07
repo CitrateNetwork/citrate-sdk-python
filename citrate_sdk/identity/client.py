@@ -144,7 +144,23 @@ class IdentityClient:
         )
         return TokenSet(tok["id_token"], tok["access_token"], tok.get("refresh_token"), claims)
 
-    def exchange_code(self, code: str, code_verifier: str, nonce: Optional[str] = None) -> TokenSet:
+    def exchange_code(self, code: str, code_verifier: str, nonce: str) -> TokenSet:
+        """Exchange an authorization code for tokens and verify the ID token.
+
+        SPY-B-010: ``nonce`` is REQUIRED. ``authorize_url`` already requires a
+        nonce, and ``verify_id_token`` only checks the nonce claim when a value
+        is supplied — so an optional nonce here meant the obvious flow (generate
+        a nonce, put it in the URL, exchange the code) produced a token that
+        LOOKED nonce-protected but never bound the ID token to the authorization
+        request. Threading the same nonce through closes the ID-token replay/
+        injection gap that PKCE does not cover.
+        """
+        if not nonce:
+            raise IdentityError(
+                "exchange_code requires the nonce generated for authorize_url; "
+                "without it the ID token is not bound to the authorization "
+                "request and replay/injection is not detected (SPY-B-010)."
+            )
         disc = self.discover()
         body = urlencode({
             "grant_type": "authorization_code", "code": code,
