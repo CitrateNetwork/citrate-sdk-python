@@ -19,7 +19,8 @@ from urllib.parse import urlencode
 import requests
 
 from .._generated import contract as _contract
-from ..entitlements import CapabilitySet, capabilities_for_claim, normalize_tier
+from .._url_security import enforce_transport_security
+from ..entitlements import CapabilitySet, normalize_tier, resolve_capabilities
 from .jwt import verify_id_token
 from .pkce import Pkce, create_pkce
 
@@ -68,6 +69,13 @@ class IdentityClient:
     redirect_uri: str
     scopes: Optional[List[str]] = None
     transport: Transport = _default_transport
+    # SPY-B-004: this client posts to token/userinfo/session endpoints taken from
+    # the discovery document and carries access_token / refresh_token / id_token as
+    # Bearer credentials. Route every URL through enforce_transport_security so a
+    # plaintext http:// endpoint (including a hostile discovery doc) is flagged.
+    # Localhost http:// stays silent; set True to silence the warning for a remote
+    # http endpoint you genuinely intend to use.
+    allow_insecure_http: bool = False
     _discovery: Optional[Dict[str, Any]] = field(default=None, init=False, repr=False)
     _jwks: Optional[List[Dict[str, Any]]] = field(default=None, init=False, repr=False)
 
@@ -76,6 +84,7 @@ class IdentityClient:
         return _contract.identity()
 
     def _get_json(self, url: str, bearer: Optional[str] = None) -> Any:
+        enforce_transport_security(url, allow_insecure_http=self.allow_insecure_http)
         headers = {"authorization": "Bearer " + bearer} if bearer else {}
         status, body = self.transport("GET", url, headers, None)
         if not (200 <= status < 300):
@@ -83,6 +92,7 @@ class IdentityClient:
         return body
 
     def _post(self, url: str, headers: Dict[str, str], body: str) -> Any:
+        enforce_transport_security(url, allow_insecure_http=self.allow_insecure_http)
         status, parsed = self.transport("POST", url, headers, body)
         if not (200 <= status < 300):
             raise IdentityError("POST %s failed: %d" % (url, status), status)
@@ -166,10 +176,14 @@ class IdentityClient:
         ent = raw.get(self._id["entitlementClaim"]) or {}
         tier = normalize_tier(ent.get("tier"))
         # SPY-B-002: was `CapabilitySet(True, True, True, True) if ent.get("citrateRole")`,
-        # granting EVERY capability to any truthy role regardless of tier. Route through the
-        # single canonical resolver so a role escalates only via the ROLE_CAPABILITIES
-        # allowlist and otherwise derives capabilities from the tier — no inline duplicate.
-        caps = capabilities_for_claim(ent)
+        # granting EVERY capability to any truthy role regardless of tier.
+        # SPY-B-003: `capabilities_for_claim` does NOT apply `expiresAt`, so an expired
+        # entitlement still yielded full capabilities here while `can()` collapsed it to
+        # public — one policy, two answers. Route through the single canonical resolver
+        # (`resolve_capabilities`, the same one `can` uses) so a role escalates only via
+        # the ROLE_CAPABILITIES allowlist AND an expired claim collapses to public — no
+        # inline duplicate, and the two paths cannot diverge on expiry.
+        caps = resolve_capabilities(ent)
         wallets = raw.get("wallets") if isinstance(raw.get("wallets"), list) else None
         return UserInfo(
             sub=str(raw.get("sub", "")), tier=tier, capabilities=caps,
