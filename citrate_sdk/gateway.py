@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import requests
 
 from ._generated import contract as _contract
+from ._url_security import enforce_transport_security
 
 Transport = Callable[[str, str, Dict[str, str], Optional[str]], Tuple[int, Any]]
 
@@ -37,12 +38,18 @@ def _default_transport(method: str, url: str, headers: Dict[str, str], body: Opt
 
 
 class GatewayClient:
-    def __init__(self, api_key: str, base_url: Optional[str] = None, transport: Optional[Transport] = None):
+    def __init__(self, api_key: str, base_url: Optional[str] = None, transport: Optional[Transport] = None,
+                 allow_insecure_http: bool = False):
         gw = _contract.gateway()
         if not api_key:
             raise GatewayError("gateway API key not configured (need a %s key)" % gw["keyPrefix"])
         self._api_key = api_key
-        self._base = (base_url or gw["baseUrl"]).rstrip("/")
+        base = (base_url or gw["baseUrl"]).rstrip("/")
+        # SPY-B-004: this client sends `Authorization: Bearer <cgk_ key>` on every
+        # call. A remote http:// base_url would ship the key in cleartext — flag it
+        # (localhost http:// stays silent; allow_insecure_http silences remote http).
+        enforce_transport_security(base, allow_insecure_http=allow_insecure_http)
+        self._base = base
         self._transport = transport or _default_transport
 
     def _call(self, method: str, path: str, body: Optional[str] = None) -> Any:
