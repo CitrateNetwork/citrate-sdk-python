@@ -16,7 +16,8 @@ class IPFSClient:
     """
 
     def __init__(self, api_url: str = "http://localhost:5001",
-                 allow_insecure_http: bool = False):
+                 allow_insecure_http: bool = False,
+                 timeout: float = 30.0):
         """
         Initialize IPFS client
 
@@ -26,11 +27,15 @@ class IPFSClient:
                 silence the cleartext-transport warning when intentionally
                 using plain http:// to a remote IPFS API host. Localhost
                 http:// is always allowed silently. Defaults to False.
+            timeout: CIT-SDKPY-03 — per-request timeout (seconds) for every IPFS
+                HTTP call. Was absent on upload/download/pin, so a hung IPFS host
+                blocked the caller indefinitely. Defaults to 30s.
         """
         # SECREM-01 WEB-4: warn when uploading/fetching over plaintext http://
         # to a remote IPFS node.
         api_url = enforce_transport_security(api_url, allow_insecure_http=allow_insecure_http)
         self.api_url = api_url.rstrip('/')
+        self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'citrate-python-sdk/0.1.0'
@@ -56,7 +61,8 @@ class IPFSClient:
             response = self.session.post(
                 f"{self.api_url}/api/v0/add",
                 files=files,
-                params={'pin': 'true', 'wrap-with-directory': 'false'}
+                params={'pin': 'true', 'wrap-with-directory': 'false'},
+                timeout=self.timeout,
             )
 
             if response.status_code != 200:
@@ -93,7 +99,8 @@ class IPFSClient:
         try:
             response = self.session.post(
                 f"{self.api_url}/api/v0/cat",
-                params={'arg': ipfs_hash}
+                params={'arg': ipfs_hash},
+                timeout=self.timeout,
             )
 
             if response.status_code != 200:
@@ -117,7 +124,8 @@ class IPFSClient:
         try:
             response = self.session.post(
                 f"{self.api_url}/api/v0/object/stat",
-                params={'arg': ipfs_hash}
+                params={'arg': ipfs_hash},
+                timeout=self.timeout,
             )
 
             if response.status_code != 200:
@@ -143,7 +151,8 @@ class IPFSClient:
         try:
             response = self.session.post(
                 f"{self.api_url}/api/v0/pin/add",
-                params={'arg': ipfs_hash}
+                params={'arg': ipfs_hash},
+                timeout=self.timeout,
             )
 
             return response.status_code == 200
@@ -216,20 +225,26 @@ class IPFSManager:
 
     def __init__(self, primary_url: str = "http://localhost:5001",
                  fallback_urls: Optional[list] = None,
-                 allow_insecure_http: bool = False):
+                 allow_insecure_http: bool = False,
+                 timeout: float = 30.0):
         """
         Initialize IPFS manager with primary and fallback nodes
 
         Args:
             primary_url: Primary IPFS node URL
-            fallback_urls: List of fallback IPFS node URLs
+            fallback_urls: List of fallback IPFS node URLs. CIT-SDKPY-03: there
+                are NO implicit third-party fallbacks — pass explicit URLs to opt
+                in. The pre-fix default silently added public gateways, so raw
+                (possibly unencrypted) model bytes could be replicated off-box to
+                a third party by default.
             allow_insecure_http: SECREM-01 WEB-4 (pre-audit 2026-06-09) —
                 forwarded to every underlying IPFSClient so remote http://
-                fallbacks are also covered by the cleartext-transport warning.
+                fallbacks are also covered by the cleartext-transport control.
+            timeout: CIT-SDKPY-03 — per-request timeout forwarded to each client.
         """
-        self.primary = IPFSClient(primary_url, allow_insecure_http=allow_insecure_http)
+        self.primary = IPFSClient(primary_url, allow_insecure_http=allow_insecure_http, timeout=timeout)
         self.fallbacks = [
-            IPFSClient(url, allow_insecure_http=allow_insecure_http)
+            IPFSClient(url, allow_insecure_http=allow_insecure_http, timeout=timeout)
             for url in (fallback_urls or [])
         ]
         self.active_client = None
@@ -339,11 +354,13 @@ def get_ipfs_manager(ipfs_urls: Optional[list] = None) -> IPFSManager:
     global _ipfs_manager
 
     if _ipfs_manager is None:
+        # CIT-SDKPY-03: default to localhost only. No implicit third-party
+        # fallbacks — the previous defaults (ipfs.infura.io, ipfs.fleek.co) sent
+        # raw model bytes off-box to a third party by default, and both were
+        # effectively defunct so the "redundancy" was illusory. Remote gateways
+        # are opt-in via `ipfs_urls`.
         primary_url = "http://localhost:5001"
-        fallback_urls = [
-            "https://ipfs.infura.io:5001",
-            "https://ipfs.fleek.co:5001"
-        ]
+        fallback_urls: list = []
 
         if ipfs_urls:
             primary_url = ipfs_urls[0]
