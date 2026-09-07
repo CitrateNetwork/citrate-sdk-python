@@ -82,6 +82,28 @@ def capabilities_for_claim(
     return capabilities(claim.get("tier"), overrides)
 
 
+def resolve_capabilities(
+    claim: Optional[dict],
+    now_ms: Optional[int] = None,
+    overrides: Optional[Mapping[str, CapabilitySet]] = None,
+) -> CapabilitySet:
+    """Resolve a claim's full capability set, honouring ``expiresAt``.
+
+    This is THE single policy implementation. Both ``can`` and the identity spine
+    (``IdentityClient.user_info``) route through it, so the expiry check cannot be
+    present on one path and absent on the other (SPY-B-003 / SJS-B-002): an expired
+    claim collapses to ``public`` here, once, for every caller. Role escalation is
+    still gated by the ``ROLE_CAPABILITIES`` allowlist via ``capabilities_for_claim``.
+    """
+    if not claim:
+        return DEFAULT_CAPABILITIES["public"]
+    now = now_ms if now_ms is not None else int(time.time() * 1000)
+    exp = claim.get("expiresAt")
+    if isinstance(exp, (int, float)) and exp <= now:
+        return DEFAULT_CAPABILITIES["public"]
+    return capabilities_for_claim(claim, overrides)
+
+
 def can(
     claim: Optional[dict],
     capability: str,
@@ -91,11 +113,8 @@ def can(
     """Whether a claim grants a capability. Expired claims collapse to ``public``; a
     ``citrateRole`` escalates only if it is in the ``ROLE_CAPABILITIES`` allowlist,
     otherwise capabilities derive from the tier (matches resolveEntitlementClaim, which
-    uses the role only to skip the KYC downgrade, never to confer confidential access)."""
-    if not claim:
-        return getattr(DEFAULT_CAPABILITIES["public"], capability)
-    now = now_ms if now_ms is not None else int(time.time() * 1000)
-    exp = claim.get("expiresAt")
-    if isinstance(exp, (int, float)) and exp <= now:
-        return getattr(DEFAULT_CAPABILITIES["public"], capability)
-    return getattr(capabilities_for_claim(claim, overrides), capability)
+    uses the role only to skip the KYC downgrade, never to confer confidential access).
+
+    A thin projection of ``resolve_capabilities`` onto one capability — the same
+    resolver the identity spine uses, so the two cannot diverge on expiry."""
+    return getattr(resolve_capabilities(claim, now_ms, overrides), capability)

@@ -15,6 +15,7 @@ from .crypto import EncryptionConfig, KeyManager
 from .errors import CitrateError, ModelNotFoundError, InsufficientFundsError
 from .ipfs import upload_to_ipfs
 from ._url_security import enforce_transport_security
+from ._generated import contract as _contract
 
 
 class CitrateClient:
@@ -29,7 +30,8 @@ class CitrateClient:
     """
 
     def __init__(self, rpc_url: str = "http://localhost:8545", private_key: Optional[str] = None,
-                 allow_insecure_http: bool = False, timeout: float = 30.0):
+                 allow_insecure_http: bool = False, timeout: float = 30.0,
+                 chain_id: Optional[int] = None):
         """
         Initialize Citrate client.
 
@@ -47,8 +49,19 @@ class CitrateClient:
                 honoured `timeout` attribute — setting `client.session.timeout`
                 does nothing, which is exactly the mistake the old timeout test
                 made. It must be passed per request, as it now is.
+            chain_id: SPY-B-005 — the EIP-155 chain-id bound into every signed
+                transaction. Defaults to the value the package VENDORS
+                (`federation_contract()["chain"]["chainId"]` = 40204), NOT the
+                RPC's answer. `_eip155_chain_id` asserts the RPC's `eth_chainId`
+                matches this and REFUSES TO SIGN on mismatch, so a hostile RPC
+                cannot make the SDK produce a signature valid on another network
+                (e.g. Ethereum mainnet). Pass an explicit value only when
+                genuinely targeting a different Citrate network.
         """
         self.timeout = timeout
+        # SPY-B-005: the chain-id that domain-separates every signature is PINNED to
+        # the vendored artifact (or an explicit override), never adopted from the RPC.
+        self._expected_chain_id = int(chain_id) if chain_id is not None else _contract.chain_id()
         # SECREM-01 WEB-4: warn when an RPC endpoint sends signed transactions /
         # private inputs to a remote host over plaintext http://.
         rpc_url = enforce_transport_security(rpc_url, allow_insecure_http=allow_insecure_http)
@@ -333,14 +346,30 @@ class CitrateClient:
             ) from e
 
     def _eip155_chain_id(self) -> int:
-        """Resolve + cache the chain id for EIP-155 transaction signing
-        (RM-G.4). Fetched once via eth_chainId; normalized to int."""
+        """Resolve + cache the chain id for EIP-155 transaction signing (RM-G.4).
+
+        SPY-B-005: fetched once via eth_chainId, then ASSERTED against the
+        configured/vendored chain-id (`self._expected_chain_id`, default 40204).
+        The RPC's answer is *verified*, never *adopted* — a hostile or mistaken
+        endpoint reporting any other chain-id (e.g. 1 for Ethereum mainnet) makes
+        this raise and refuse to sign, so a signature cannot be domain-separated
+        onto a network the SDK did not intend. This mirrors the pin
+        `IdentityClient.discover()` already applies to the OIDC issuer.
+        """
         if self._chain_id is None:
             raw = self.get_chain_id()
             if isinstance(raw, str):
-                self._chain_id = int(raw, 16) if raw.startswith("0x") else int(raw)
+                reported = int(raw, 16) if raw.startswith("0x") else int(raw)
             else:
-                self._chain_id = int(raw)
+                reported = int(raw)
+            if reported != self._expected_chain_id:
+                raise CitrateError(
+                    "RPC chain-id mismatch: endpoint reports %d but the "
+                    "configured/vendored chain-id is %d. Refusing to sign a "
+                    "transaction whose signature could be replayed on another "
+                    "network (SPY-B-005)." % (reported, self._expected_chain_id)
+                )
+            self._chain_id = reported
         return self._chain_id
 
     def _send_transaction(

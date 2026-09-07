@@ -26,6 +26,8 @@ from urllib.parse import quote, urlencode
 
 import requests
 
+from ._url_security import enforce_transport_security
+
 Transport = Callable[[str, str, dict[str, str], str | None], tuple[int, Any]]
 
 
@@ -214,10 +216,15 @@ class MemoryClient:
         origin: str,
         id_token: str | None = None,
         transport: Transport | None = None,
+        allow_insecure_http: bool = False,
     ):
         if not origin:
             raise MemoryError("memory gateway origin not configured")
-        self._origin = origin.rstrip("/")
+        origin = origin.rstrip("/")
+        # SPY-B-004: org routes send `Authorization: Bearer <id_token>` — an OIDC
+        # identity assertion. A remote http:// origin would ship it in cleartext.
+        enforce_transport_security(origin, allow_insecure_http=allow_insecure_http)
+        self._origin = origin
         self._id_token = id_token
         self._transport = transport or _default_transport
 
@@ -253,6 +260,7 @@ class ByomMemoryClient:
         sub: str,
         connect_token: str,
         transport: Transport | None = None,
+        allow_insecure_http: bool = False,
     ):
         if not origin:
             raise MemoryError("memory gateway origin not configured")
@@ -260,7 +268,11 @@ class ByomMemoryClient:
             raise MemoryError("BYOM sub required")
         if not connect_token:
             raise MemoryError("BYOM connect token required")
-        self._url = "{}/mcp/u/{}".format(origin.rstrip("/"), quote(sub, safe=""))
+        origin = origin.rstrip("/")
+        # SPY-B-004: the BYOM endpoint carries `Authorization: Bearer <connect_token>`.
+        # A remote http:// origin would ship it in cleartext.
+        enforce_transport_security(origin, allow_insecure_http=allow_insecure_http)
+        self._url = "{}/mcp/u/{}".format(origin, quote(sub, safe=""))
         self._connect_token = connect_token
         self._transport = transport or _default_transport
         self._id = 0
