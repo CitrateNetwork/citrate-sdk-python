@@ -182,18 +182,34 @@ class KeyManager:
     # the recipient — which fixed the original finding (the key was in public
     # calldata) — but derived the KEK from a CONSTANT HKDF salt over the sender's
     # STATIC identity key. The KEK was therefore identical for a given
-    # (sender, recipient) pair forever: one compromise of the sender's private
-    # key retroactively decrypts every envelope ever sent to that recipient.
+    # (sender, recipient) pair forever.
     #
     # V1 also carried `recipient_public_key` without binding it. An audit PoC
     # confirmed the field could be overwritten with 0x00*65 and decryption still
     # succeeded, returning identical plaintext — it looked like a control and was
     # not one.
     #
-    # V2 fixes both: a fresh 32-byte `kdf_salt` per envelope, and BOTH endpoint
-    # public keys bound into the HKDF `info`. Tampering with either the salt or
-    # a key field changes the derived KEK, so the AES-GCM unwrap fails its tag
-    # check instead of being silently ignored.
+    # V2 fixes TWO of V1's problems: a fresh 32-byte `kdf_salt` per envelope
+    # (so the KEK is no longer identical/correlatable across messages to the same
+    # recipient), and BOTH endpoint public keys bound into the HKDF `info`.
+    # Tampering with either the salt or a key field changes the derived KEK, so
+    # the AES-GCM unwrap fails its tag check instead of being silently ignored.
+    #
+    # WHAT V2 DOES NOT GIVE YOU: FORWARD SECRECY (CIT-SDKPY-01).
+    #
+    # The ECDH is static-static — `sender_priv` is the long-lived Ethereum
+    # identity key (reused verbatim as the ECDH key, see __init__) and
+    # `recipient_pub` is fixed — so ECDH(sender_priv, recipient_pub) is the SAME
+    # secret for every message. `kdf_salt` is carried in the envelope IN
+    # CLEARTEXT. So an attacker who ever compromises the sender's (or recipient's)
+    # static private key recomputes the one static ECDH secret, reads each
+    # envelope's own public `kdf_salt`, and re-derives EVERY past and future KEK —
+    # decrypting all envelopes to that recipient. The per-message salt prevents
+    # KEK REUSE/correlation; it does NOT confine a key compromise to a single
+    # message. Real forward secrecy requires an EPHEMERAL per-message key
+    # (ECIES / ephemeral-static ECDH), which V2 does not use. Because the ECDH
+    # key IS the signing/wallet key, that single key — if lost — retroactively
+    # discloses every encrypted payload. Do not represent V2 as forward-secret.
     #
     # SENDER AUTHENTICATION — what this scheme does and does not give you.
     #
