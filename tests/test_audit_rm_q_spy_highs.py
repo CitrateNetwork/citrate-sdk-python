@@ -117,31 +117,31 @@ def test_transport_gate_applied_to_every_credential_client():
         assert "Bearer " in inspect.getsource(mod)
 
 
-def _remote_http_warns(construct):
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+def _remote_http_raises(construct):
+    # SPY-B-009: the gate now FAILS CLOSED on remote plaintext instead of warning.
+    from citrate_sdk._url_security import InsecureTransportError
+    with pytest.raises(InsecureTransportError):
         construct()
-    return [w for w in caught if issubclass(w.category, UserWarning)
-            and "cleartext" in str(w.message).lower()]
 
 
-def test_gateway_remote_http_warns():
+def test_gateway_remote_http_raises():
     from citrate_sdk.gateway import GatewayClient
-    assert _remote_http_warns(
+    _remote_http_raises(
         lambda: GatewayClient(api_key="cgk_x", base_url="http://gw.example.com"))
 
 
-def test_memory_remote_http_warns():
+def test_memory_remote_http_raises():
     from citrate_sdk.memory import ByomMemoryClient, MemoryClient
-    assert _remote_http_warns(
+    _remote_http_raises(
         lambda: MemoryClient(origin="http://mem.example.com", id_token="t"))
-    assert _remote_http_warns(
+    _remote_http_raises(
         lambda: ByomMemoryClient(origin="http://mem.example.com", sub="s",
                                  connect_token="t"))
 
 
-def test_identity_remote_http_warns():
-    """A hostile discovery document returning http endpoints must be flagged."""
+def test_identity_remote_http_raises():
+    """A hostile discovery document returning http endpoints must be flagged —
+    now by raising rather than warning (SPY-B-009)."""
     from citrate_sdk.identity.client import IdentityClient
 
     def hostile_transport(method, url, headers, body):
@@ -154,7 +154,7 @@ def test_identity_remote_http_warns():
 
     c = IdentityClient(client_id="citrate-core", redirect_uri="x",
                        transport=hostile_transport)
-    assert _remote_http_warns(lambda: c.user_info("at"))
+    _remote_http_raises(lambda: c.user_info("at"))
 
 
 # ── SPY-B-005 · chain-id must be pinned to the vendored value ─────────────────
