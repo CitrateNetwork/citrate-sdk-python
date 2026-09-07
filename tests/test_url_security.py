@@ -7,7 +7,7 @@ import warnings
 
 import pytest
 
-from citrate_sdk._url_security import enforce_transport_security
+from citrate_sdk._url_security import enforce_transport_security, InsecureTransportError
 from citrate_sdk import CitrateClient
 from citrate_sdk.ipfs import IPFSClient
 
@@ -44,31 +44,40 @@ def test_remote_https_is_silent(url):
     "http://203.0.113.5:8545",
     "http://node.example.com/rpc",
 ])
-def test_remote_http_warns(url):
-    caught = _warns(url)
-    assert len(caught) == 1
-    assert "cleartext" in str(caught[0].message).lower()
+def test_remote_http_raises(url):
+    # SPY-B-009: remote plaintext now FAILS CLOSED instead of warning-and-proceeding.
+    with pytest.raises(InsecureTransportError) as ei:
+        enforce_transport_security(url)
+    assert "cleartext" in str(ei.value).lower()
 
 
 def test_remote_http_opt_out_is_silent():
+    # Explicit opt-in returns the URL unchanged with no warning and no raise.
     assert _warns("http://rpc.citrate.ai:8545", allow_insecure_http=True) == []
+    assert (enforce_transport_security("http://rpc.citrate.ai:8545",
+                                       allow_insecure_http=True)
+            == "http://rpc.citrate.ai:8545")
 
 
 def test_url_returned_unchanged():
-    # We never implicitly rewrite the scheme.
+    # We never implicitly rewrite the scheme — with the opt-in, the URL is
+    # returned verbatim.
     url = "http://rpc.citrate.ai:8545"
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        assert enforce_transport_security(url) == url
+    assert enforce_transport_security(url, allow_insecure_http=True) == url
 
 
 # ── integration: constructors surface the warning ────────────────────────────
 
-def test_client_remote_http_warns():
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+def test_client_remote_http_raises():
+    # SPY-B-009: a remote plaintext RPC endpoint fails closed at construction.
+    with pytest.raises(InsecureTransportError):
         CitrateClient(rpc_url="http://rpc.citrate.ai:8545")
-    assert any(issubclass(w.category, UserWarning) for w in caught)
+
+
+def test_client_remote_http_opt_in_ok():
+    # The opt-in still lets a caller who genuinely needs plaintext proceed.
+    c = CitrateClient(rpc_url="http://rpc.citrate.ai:8545", allow_insecure_http=True)
+    assert c.rpc_url == "http://rpc.citrate.ai:8545"
 
 
 def test_client_localhost_is_silent():
@@ -78,8 +87,7 @@ def test_client_localhost_is_silent():
     assert [w for w in caught if issubclass(w.category, UserWarning)] == []
 
 
-def test_ipfs_remote_http_warns():
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+def test_ipfs_remote_http_raises():
+    # SPY-B-009: a remote plaintext IPFS API endpoint fails closed.
+    with pytest.raises(InsecureTransportError):
         IPFSClient(api_url="http://ipfs.example.com:5001")
-    assert any(issubclass(w.category, UserWarning) for w in caught)

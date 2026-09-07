@@ -14,12 +14,21 @@ plaintext to a remote host (e.g. an internal lab network without TLS).
 """
 
 import ipaddress
-import warnings
 from urllib.parse import urlparse
 
 # Hostnames that are always local to the calling machine — plaintext to these
 # never traverses an untrusted network, so http:// is silently allowed.
 _LOCAL_HOSTNAMES = frozenset({"localhost", "ip6-localhost", "ip6-loopback"})
+
+
+class InsecureTransportError(ValueError):
+    """Raised when a remote endpoint would be reached over plaintext http://.
+
+    SPY-B-009: the asset being protected is signed transactions, private model
+    inputs, and bearer credentials (gateway keys, OIDC id/access/refresh tokens).
+    For that asset class the control FAILS CLOSED — a remote ``http://`` endpoint
+    raises unless the caller explicitly passes ``allow_insecure_http=True``.
+    """
 
 
 def _is_local_host(host: str) -> bool:
@@ -42,13 +51,18 @@ def enforce_transport_security(url: str, *, allow_insecure_http: bool = False) -
 
     - ``https://`` URLs pass silently.
     - ``http://`` to a loopback/localhost host passes silently (local traffic).
-    - ``http://`` to a *remote* host emits a :class:`UserWarning` unless
-      ``allow_insecure_http=True`` is passed, in which case it passes silently.
+    - ``http://`` to a *remote* host RAISES :class:`InsecureTransportError`
+      unless ``allow_insecure_http=True`` is passed, in which case it passes
+      silently.
 
-    The URL is returned as-is (we never rewrite the scheme implicitly — an
-    automatic http→https upgrade to a host that doesn't serve TLS would fail
-    confusingly; warning keeps the user in control). Callers that want a hard
-    failure can raise on the warning via ``warnings.simplefilter("error")``.
+    SPY-B-009: this used to WARN and proceed. A ``UserWarning`` is shown once per
+    location by default and is routinely suppressed by libraries and frameworks,
+    so plaintext transport of signed transactions, private inputs, and bearer
+    credentials went out with no effective signal. The default now FAILS CLOSED:
+    the caller must opt in to remote plaintext, which is exactly what the
+    ``allow_insecure_http`` flag was designed for. The scheme is never rewritten
+    implicitly — an automatic http→https upgrade to a host that doesn't serve TLS
+    would fail confusingly.
     """
     if not isinstance(url, str) or not url:
         return url
@@ -62,14 +76,12 @@ def enforce_transport_security(url: str, *, allow_insecure_http: bool = False) -
         return url
 
     if not allow_insecure_http:
-        warnings.warn(
-            f"Connecting to remote host {parsed.hostname!r} over plaintext "
-            f"http:// ({url!r}). Traffic (including signed transactions and "
-            f"private inputs) is sent in cleartext and can be intercepted or "
-            f"tampered with. Use an https:// endpoint, or pass "
-            f"allow_insecure_http=True to silence this warning if you really "
-            f"intend to use http to a remote host.",
-            UserWarning,
-            stacklevel=3,
+        raise InsecureTransportError(
+            f"Refusing to connect to remote host {parsed.hostname!r} over "
+            f"plaintext http:// ({url!r}). Traffic (including signed "
+            f"transactions, private inputs, and bearer credentials) would be "
+            f"sent in cleartext and could be intercepted or tampered with. Use "
+            f"an https:// endpoint, or pass allow_insecure_http=True to opt in "
+            f"if you really intend to use http to a remote host."
         )
     return url
