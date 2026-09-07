@@ -21,18 +21,30 @@ def main():
     # Configuration
     RPC_URL = os.getenv("CITRATE_RPC_URL", "http://localhost:8545")
 
-    # Create multiple accounts for marketplace simulation
+    # SPY-B-011: source keys from the environment rather than constructing a
+    # throwaway KeyManager purely to extract its private key as a string and hand
+    # it to another constructor — the anti-pattern the SDK should steer users away
+    # from. Real participants bring their own keys; the demo reads them from env
+    # (mirrors basic_usage.py / encrypted_inference.py).
+    SELLER_KEY = os.getenv("CITRATE_PRIVATE_KEY")
+    BUYER_KEY = os.getenv("CITRATE_BUYER_PRIVATE_KEY")
+    if not (SELLER_KEY and BUYER_KEY):
+        print("Please set CITRATE_PRIVATE_KEY (seller) and "
+              "CITRATE_BUYER_PRIVATE_KEY (buyer) environment variables")
+        return
+
+    # Create marketplace participants from their own keys
     print("Creating marketplace participants...")
 
     # Model seller
-    seller = CitrateClient(rpc_url=RPC_URL, private_key=KeyManager().get_private_key())
+    seller = CitrateClient(rpc_url=RPC_URL, private_key=SELLER_KEY)
     print(f"Seller: {seller.key_manager.get_address()}")
 
     # Model buyer
-    buyer = CitrateClient(rpc_url=RPC_URL, private_key=KeyManager().get_private_key())
+    buyer = CitrateClient(rpc_url=RPC_URL, private_key=BUYER_KEY)
     print(f"Buyer: {buyer.key_manager.get_address()}")
 
-    # Revenue partner (e.g., dataset provider)
+    # Revenue partner (e.g., dataset provider) — a keypair, used as a payee
     partner = KeyManager()
     print(f"Partner: {partner.get_address()}")
 
@@ -149,10 +161,15 @@ def main():
         # Simulate multiple users and usage
         print(f"\n📊 Simulating marketplace activity...")
 
-        # Create more buyers
+        # Create more buyers. These are throwaway SIMULATION accounts (fresh
+        # random keypairs), so generating them here is intentional — unlike the
+        # seller/buyer above, they do not represent a real user whose key should
+        # come from the environment (SPY-B-011).
+        from eth_account import Account
         buyers = []
         for i in range(3):
-            buyer_client = CitrateClient(rpc_url=RPC_URL, private_key=KeyManager().get_private_key())
+            sim_key = Account.create().key.hex()
+            buyer_client = CitrateClient(rpc_url=RPC_URL, private_key=sim_key)
             buyers.append(buyer_client)
 
         # Simulate purchases and usage
