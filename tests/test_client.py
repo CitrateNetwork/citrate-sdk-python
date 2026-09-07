@@ -72,7 +72,12 @@ class TestCitrateClient:
         client = CitrateClient(self.mock_rpc_url)
         chain_id = client.get_chain_id()
 
-        assert chain_id == "0x9d0c"
+        # SPY-B-013: get_chain_id() is annotated `-> int` and must normalize the
+        # RPC's hex string, so `get_chain_id() == 40204` is True (it silently
+        # returned the raw "0x9d0c" string before, making every int comparison
+        # False).
+        assert chain_id == 40204
+        assert isinstance(chain_id, int)
 
     @patch('requests.Session.post')
     def test_get_balance(self, mock_post):

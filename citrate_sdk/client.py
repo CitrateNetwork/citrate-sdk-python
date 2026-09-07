@@ -17,6 +17,25 @@ from .ipfs import upload_to_ipfs
 from ._url_security import enforce_transport_security
 from ._generated import contract as _contract
 
+# SPY-B-006: receipt log topics are keccak256 of the event signature, NOT the
+# ASCII hex of the event name. Pre-fix the client matched
+# ``"0x" + "ModelDeployed".encode().hex()[:16]`` == ``0x4d6f64656c446570`` (the
+# bytes of "ModelDep"), which is valid hex but matches a real topic with
+# probability ~2**-64, so every deploy/inference fell through to a raise AFTER
+# the tx was broadcast and confirmed. The event SIGNATURES are the single source
+# of truth; the tripwire builds its fixture from these same constants via
+# ``Web3.keccak(text=...)`` so the matcher and the fixture cannot drift apart.
+# If the node's ABI differs, change the signature here — one place.
+MODEL_DEPLOYED_EVENT_SIGNATURE = "ModelDeployed(bytes32,address)"
+INFERENCE_COMPLETE_EVENT_SIGNATURE = "InferenceComplete(bytes32,bytes)"
+
+
+def _event_topic(signature: str) -> str:
+    """keccak256 topic (0x-prefixed hex) for an event signature string."""
+    from web3 import Web3
+
+    return Web3.keccak(text=signature).hex().lower()
+
 
 class CitrateClient:
     """
@@ -122,8 +141,18 @@ class CitrateClient:
             raise CitrateError(f"Network error: {str(e)}")
 
     def get_chain_id(self) -> int:
-        """Get blockchain chain ID"""
-        return self._rpc_call("eth_chainId")
+        """Get blockchain chain ID.
+
+        SPY-B-013: ``eth_chainId`` answers a hex string like ``"0x9d0c"``; this
+        getter is annotated ``-> int`` and callers write ``get_chain_id() == 40204``,
+        which silently returned ``False`` when the raw string leaked through.
+        Normalize to ``int`` here so the public getter honours its annotation
+        (``_eip155_chain_id`` already normalized internally; the getter did not).
+        """
+        raw = self._rpc_call("eth_chainId")
+        if isinstance(raw, str):
+            return int(raw, 16) if raw.startswith("0x") else int(raw)
+        return int(raw)
 
     def get_balance(self, address: str) -> int:
         """Get account balance in wei"""
@@ -192,8 +221,12 @@ class CitrateClient:
         if encryption_metadata:
             tx_data["encryption_metadata"] = encryption_metadata
 
-        # Call model deployment precompile (0x0100)
-        tx_hash = self._send_transaction("0x0100000000000000000000000000000000000100", tx_data)
+        # Call model deployment precompile. SPY-B-007: the address is read from
+        # the vendored canonical table (ModelDeploy = 0x..0100), NOT a hardcoded
+        # `0x0100..0100` literal. The pre-fix literals were wrong in the high byte
+        # (`0x01`-prefixed), so every deploy dispatched to an address with no
+        # precompile entry and the state change never happened.
+        tx_hash = self._send_transaction(self._precompile("ModelDeploy"), tx_data)
 
         # Wait for confirmation
         receipt = self._wait_for_receipt(tx_hash)
@@ -252,16 +285,29 @@ class CitrateClient:
         # Encrypt input if needed. CITRATE_SDK_PYTHON-001: the symmetric key
         # is ECDH-wrapped to recipient_public_key and never shipped raw; the
         # call fails closed if no recipient key is supplied.
-        if encrypted and self.key_manager:
+        # SPY-B-013: fail CLOSED when the caller asked for encryption but no
+        # KeyManager is configured. The pre-fix `if encrypted and self.key_manager:`
+        # had no `else`, so `encrypted=True` on a keyless client SILENTLY skipped
+        # encryption and sent `input_data` as plaintext into permanent public
+        # calldata. A downstream `_send_transaction` guard happened to catch it,
+        # but confidentiality must not depend on an unrelated check in another
+        # method — refuse here, naming encryption.
+        if encrypted:
+            if not self.key_manager:
+                raise CitrateError(
+                    "encrypted=True but no KeyManager is configured (no private_key). "
+                    "Refusing to send the inference input in plaintext (SPY-B-013)."
+                )
             encrypted_input = self.key_manager.encrypt_data(
                 json.dumps(input_data), recipient_public_key
             )
             request.input_data = {"encrypted": encrypted_input}
 
-        # Call inference precompile (0x0101)
+        # Call inference precompile. SPY-B-007: address read from the vendored
+        # canonical table (ModelInference = 0x..0101), not a hardcoded literal.
         tx_data = asdict(request)
         tx_hash = self._send_transaction(
-            "0x0100000000000000000000000000000000000101",
+            self._precompile("ModelInference"),
             tx_data,
             gas_limit=max_gas
         )
@@ -272,9 +318,18 @@ class CitrateClient:
         # Extract results from logs
         output_data = self._extract_inference_output(receipt)
 
-        # Decrypt output if encrypted
+        # Decrypt output if encrypted. CIT-SDKPY-02: pin the sender to the model/
+        # recipient key we wrapped the REQUEST to, so a successful decrypt also
+        # authenticates that the response came from that keypair — not merely that
+        # *some* holder of a valid key produced it. Static-static ECDH already
+        # guarantees the envelope was minted by the claimed sender; pinning makes
+        # the SDK's own consumer of `decrypt_data` actually USE that guarantee
+        # instead of reading decrypt-success as authenticity.
         if encrypted and self.key_manager and "encrypted" in output_data:
-            decrypted_output = self.key_manager.decrypt_data(output_data["encrypted"])
+            decrypted_output = self.key_manager.decrypt_data(
+                output_data["encrypted"],
+                expected_sender_public_key=recipient_public_key,
+            )
             output_data = json.loads(decrypted_output)
 
         return InferenceResult(
@@ -344,6 +399,23 @@ class CitrateClient:
             raise CitrateError(
                 f"IPFS upload failed and no verifiable fallback is permitted: {e}"
             ) from e
+
+    def _precompile(self, name: str) -> str:
+        """Canonical precompile address for ``name`` from the vendored table.
+
+        SPY-B-007: the single source of truth is
+        ``federation_contract()["precompiles"]`` (which ``cli.py`` already reads),
+        never a hardcoded literal in this module. Raises if the name is unknown so
+        a typo fails loudly instead of dispatching to nothing.
+        """
+        table = _contract.precompiles()
+        addr = table.get(name)
+        if not addr:
+            raise CitrateError(
+                "unknown precompile %r; vendored table has: %s"
+                % (name, ", ".join(sorted(table)))
+            )
+        return addr
 
     def _eip155_chain_id(self) -> int:
         """Resolve + cache the chain id for EIP-155 transaction signing (RM-G.4).
@@ -424,28 +496,46 @@ class CitrateClient:
         raise CitrateError(f"Transaction timeout: {tx_hash}")
 
     def _extract_model_id_from_receipt(self, receipt: Dict[str, Any]) -> str:
-        """Extract model ID from deployment receipt logs"""
+        """Extract model ID from deployment receipt logs.
+
+        SPY-B-006: match ``topics[0]`` against the keccak256 of the event
+        signature, not the ASCII hex of the event name. The old check could
+        never match a real topic, so this always raised AFTER the tx was
+        broadcast and confirmed. On genuine not-found the error now carries the
+        transactionHash so the caller can recover the already-mined deployment
+        instead of blindly retrying and paying gas again.
+        """
+        want = _event_topic(MODEL_DEPLOYED_EVENT_SIGNATURE)
         logs = receipt.get("logs", [])
         for log in logs:
-            # Look for ModelDeployed event
-            if log.get("topics", []):
-                topic = log["topics"][0]
-                if topic.startswith("0x" + "ModelDeployed".encode().hex()[:16]):
-                    # Extract model ID from log data
-                    return log["data"][:66]  # First 32 bytes as hex
+            topics = log.get("topics", [])
+            if topics and str(topics[0]).lower() == want:
+                # Extract model ID from log data
+                return log["data"][:66]  # First 32 bytes as hex
 
-        raise CitrateError("Model ID not found in deployment receipt")
+        raise CitrateError(
+            "Model ID not found in deployment receipt (tx %s); the transaction "
+            "may already be mined — do not blindly resubmit."
+            % receipt.get("transactionHash", "?")
+        )
 
     def _extract_inference_output(self, receipt: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract inference output from execution receipt"""
+        """Extract inference output from execution receipt.
+
+        SPY-B-006: match ``topics[0]`` against the keccak256 of the event
+        signature rather than the ASCII hex of the event name.
+        """
+        want = _event_topic(INFERENCE_COMPLETE_EVENT_SIGNATURE)
         logs = receipt.get("logs", [])
         for log in logs:
-            if log.get("topics", []):
-                topic = log["topics"][0]
-                if topic.startswith("0x" + "InferenceComplete".encode().hex()[:16]):
-                    # Decode output data from log
-                    data_hex = log["data"]
-                    data_bytes = bytes.fromhex(data_hex[2:])
-                    return json.loads(data_bytes.decode())
+            topics = log.get("topics", [])
+            if topics and str(topics[0]).lower() == want:
+                # Decode output data from log
+                data_hex = log["data"]
+                data_bytes = bytes.fromhex(data_hex[2:])
+                return json.loads(data_bytes.decode())
 
-        raise CitrateError("Inference output not found in receipt")
+        raise CitrateError(
+            "Inference output not found in receipt (tx %s)"
+            % receipt.get("transactionHash", "?")
+        )
