@@ -1,4 +1,6 @@
 # citrate-sdk-python
+
+*Part of the **[Citrate Network](https://citrate.ai)** — own the means of computation. · [Docs](https://docs.citrate.ai) · [Run a node](https://citrate.ai/download) · [Contribute → free membership](https://github.com/CitrateNetwork/.github/blob/main/CONTRIBUTING.md)*
 > The Python SDK and `citrate` CLI for the Citrate Network (chain **40204**) — connect to the chain, deploy/run models, encrypt inference inputs, and call the inference gateway.
 
 ## What it is
