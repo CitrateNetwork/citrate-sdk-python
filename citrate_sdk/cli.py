@@ -18,7 +18,6 @@ import argparse
 import json
 import os
 import sys
-from typing import List, Optional
 
 from . import entitlements
 from ._generated import contract
@@ -65,7 +64,7 @@ def _cmd_wallet(args: argparse.Namespace) -> int:
         else:
             _print({"userId": user_id, "address": wallet.predict_wallet_address(user_id)})
     except wallet.WalletPredictionError as e:
-        print("error: %s" % e, file=sys.stderr)
+        print(f"error: {e}", file=sys.stderr)
         return 1
     return 0
 
@@ -90,10 +89,10 @@ def _cmd_gateway(args: argparse.Namespace) -> int:
             key = sys.stdin.readline().strip()
         else:
             try:
-                with open(args.api_key_file, "r", encoding="utf-8") as fh:
+                with open(args.api_key_file, encoding="utf-8") as fh:
                     key = fh.read().strip()
             except OSError as e:
-                print("error: cannot read --api-key-file: %s" % e, file=sys.stderr)
+                print(f"error: cannot read --api-key-file: {e}", file=sys.stderr)
                 return 2
     try:
         client = GatewayClient(api_key=key)
@@ -107,7 +106,7 @@ def _cmd_gateway(args: argparse.Namespace) -> int:
                 return 2
             _print(client.chat_completions(args.model, [{"role": "user", "content": args.message}]))
     except GatewayError as e:
-        print("gateway error: %s" % e, file=sys.stderr)
+        print(f"gateway error: {e}", file=sys.stderr)
         return 1
     return 0
 
@@ -150,7 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):

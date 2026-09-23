@@ -17,13 +17,11 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
 from . import parameters as P
 from .agents import (
-    Agent,
     ComputeProviderAgent,
     ModelCreatorAgent,
     SchoolAgent,
@@ -31,7 +29,6 @@ from .agents import (
     StakerAgent,
     ValidatorAgent,
 )
-
 
 # ---------------------------------------------------------------------------
 # Data containers
@@ -91,7 +88,7 @@ class SimulationResult:
         """Last epoch snapshot."""
         return self.epochs[-1]
 
-    def at_year(self, year: int) -> Optional[EpochSnapshot]:
+    def at_year(self, year: int) -> EpochSnapshot | None:
         """Return snapshot closest to the given year boundary."""
         target_epoch = year * P.EPOCHS_PER_YEAR
         for snap in self.epochs:

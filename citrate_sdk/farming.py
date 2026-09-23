@@ -20,7 +20,7 @@ Data sources:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .abi import AbiInterface
 from .errors import ConfigurationError
@@ -63,10 +63,10 @@ class FarmingManager:
     def __init__(
         self,
         rpc_call: Any,
-        default_account: Optional[str] = None,
+        default_account: str | None = None,
         gas_limit: int = 300_000,
         gas_price: str = "0x3b9aca00",
-        contract_addresses: Optional[Dict[str, str]] = None,
+        contract_addresses: dict[str, str] | None = None,
     ) -> None:
         self._rpc_call = rpc_call
         self._default_account = default_account
@@ -104,7 +104,7 @@ class FarmingManager:
         }
         return self._rpc_call("eth_sendTransaction", [tx])
 
-    def _resolve_address(self, address: Optional[str]) -> str:
+    def _resolve_address(self, address: str | None) -> str:
         target = address or self._default_account
         if not target:
             raise ConfigurationError("No address provided and no defaultAccount configured.")
@@ -114,7 +114,7 @@ class FarmingManager:
     # Score Queries
     # -------------------------------------------------------------------
 
-    def get_my_score(self, address: Optional[str] = None) -> int:
+    def get_my_score(self, address: str | None = None) -> int:
         """Get participant's contribution score from the snapshot.
 
         Data source: TestnetFarmingAccounting.snapshotScores(address) via eth_call.
@@ -133,7 +133,7 @@ class FarmingManager:
         (score,) = self._iface.decode_function_result("snapshotScores", result)
         return int(score)
 
-    def get_my_share(self, address: Optional[str] = None) -> int:
+    def get_my_share(self, address: str | None = None) -> int:
         """Calculate participant's USD share of treasury distribution pool.
 
         Data source: TestnetFarmingAccounting.calculateShare(address) via eth_call.
@@ -156,7 +156,7 @@ class FarmingManager:
     # Leaderboard
     # -------------------------------------------------------------------
 
-    def get_leaderboard(self, count: int = 20) -> List[Dict[str, Any]]:
+    def get_leaderboard(self, count: int = 20) -> list[dict[str, Any]]:
         """Get top N contributors with scores and shares.
 
         Data source: TestnetFarmingAccounting.getTopContributors(uint256) via eth_call.
@@ -174,7 +174,7 @@ class FarmingManager:
         decoded = self._iface.decode_function_result("getTopContributors", result)
         addrs, scores_list, shares_list = decoded
 
-        leaderboard: List[Dict[str, Any]] = []
+        leaderboard: list[dict[str, Any]] = []
         for i in range(len(addrs)):
             leaderboard.append({
                 "address": addrs[i],
@@ -200,7 +200,7 @@ class FarmingManager:
         data = self._iface.encode_function_data("claim")
         return self._send_transaction(addr, data)
 
-    def has_claimed(self, address: Optional[str] = None) -> bool:
+    def has_claimed(self, address: str | None = None) -> bool:
         """Check if participant has already claimed.
 
         Data source: TestnetFarmingAccounting.hasClaimed(address) via eth_call.
@@ -223,7 +223,7 @@ class FarmingManager:
     # Distribution Info
     # -------------------------------------------------------------------
 
-    def get_distribution_info(self) -> Dict[str, Any]:
+    def get_distribution_info(self) -> dict[str, Any]:
         """Get distribution pool info (stablecoin, total pool, total claimed).
 
         Data source: TestnetFarmingAccounting state variables via eth_call.
@@ -286,7 +286,7 @@ class FarmingManager:
             "snapshot_taken": bool(snapshot_taken),
         }
 
-    def is_in_snapshot(self, address: Optional[str] = None) -> bool:
+    def is_in_snapshot(self, address: str | None = None) -> bool:
         """Check if an address is included in the snapshot.
 
         Data source: TestnetFarmingAccounting.isSnapshotted(address) via eth_call.
@@ -305,7 +305,7 @@ class FarmingManager:
         (is_in,) = self._iface.decode_function_result("isSnapshotted", result)
         return bool(is_in)
 
-    def get_claimed_amount(self, address: Optional[str] = None) -> int:
+    def get_claimed_amount(self, address: str | None = None) -> int:
         """Get the amount a participant has already claimed.
 
         Data source: TestnetFarmingAccounting.claimedAmount(address) via eth_call.

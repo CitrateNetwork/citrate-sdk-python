@@ -7,8 +7,8 @@ import warnings
 
 import pytest
 
-from citrate_sdk._url_security import enforce_transport_security, InsecureTransportError
 from citrate_sdk import CitrateClient
+from citrate_sdk._url_security import InsecureTransportError, enforce_transport_security
 from citrate_sdk.ipfs import IPFSClient
 
 

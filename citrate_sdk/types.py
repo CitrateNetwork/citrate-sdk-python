@@ -6,8 +6,6 @@ sdk/javascript/src/compute.ts.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional
-
 
 # ============================================================================
 # Learning Types
@@ -60,7 +58,7 @@ class Contributions:
     claimable: str  # Ether-denominated
     distributed: str  # Ether-denominated
     pending_reward: str  # Ether-denominated
-    per_type: List[ContributionDetail] = field(default_factory=list)
+    per_type: list[ContributionDetail] = field(default_factory=list)
 
 
 # ============================================================================

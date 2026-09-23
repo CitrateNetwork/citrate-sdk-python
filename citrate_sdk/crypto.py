@@ -4,23 +4,23 @@ Cryptographic utilities for Citrate SDK
 
 import hashlib
 import hmac
-import secrets
 import json
-from typing import Tuple, Dict, Any, List, Optional
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.asymmetric import ec
+import secrets
+from typing import Any
+
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
-from .errors import CitrateError
-from .finite_field import split_secret_bytes, reconstruct_secret_bytes
 from .ecdh_real import ECDHManager
+from .errors import CitrateError
+from .finite_field import reconstruct_secret_bytes, split_secret_bytes
 
 
-def _zeroize(buf: Optional[bytearray]) -> None:
+def _zeroize(buf: bytearray | None) -> None:
     """Best-effort in-place wipe of key material (SECREM-02 K3 /
     FUA-SDK-PY-03).
 
@@ -84,7 +84,7 @@ class KeyManager:
         public_bytes = self.ecdh_manager.get_public_key_compressed()
         return public_bytes.hex()
 
-    def sign_transaction(self, transaction: Dict[str, Any]) -> str:
+    def sign_transaction(self, transaction: dict[str, Any]) -> str:
         """
         Sign Ethereum transaction.
 
@@ -104,7 +104,7 @@ class KeyManager:
         self,
         model_data: bytes,
         config: 'EncryptionConfig'
-    ) -> Tuple[bytes, Dict[str, Any]]:
+    ) -> tuple[bytes, dict[str, Any]]:
         """
         Encrypt model data with AES-256-GCM.
 
@@ -142,7 +142,7 @@ class KeyManager:
     def decrypt_model(
         self,
         encrypted_data: bytes,
-        metadata: Dict[str, Any]
+        metadata: dict[str, Any]
     ) -> bytes:
         """
         Decrypt model data.
@@ -307,7 +307,7 @@ class KeyManager:
     def decrypt_data(
         self,
         encrypted_package: str,
-        expected_sender_public_key: Optional[str] = None,
+        expected_sender_public_key: str | None = None,
     ) -> str:
         """Decrypt a V2 ECDH-wrapped envelope. FAILS CLOSED on anything else.
 
@@ -434,8 +434,8 @@ class KeyManager:
         self,
         peer_public_key: str,
         *,
-        salt: Optional[bytes] = None,
-        info: Optional[bytes] = None,
+        salt: bytes | None = None,
+        info: bytes | None = None,
     ) -> bytes:
         """
         Derive shared key using ECDH.
@@ -506,7 +506,7 @@ class KeyManager:
         aesgcm = AESGCM(owner_key)
         return aesgcm.decrypt(nonce, encrypted_key, None)
 
-    def _create_key_shares(self, key: bytes, threshold: int, total: int) -> List[Dict[str, str]]:
+    def _create_key_shares(self, key: bytes, threshold: int, total: int) -> list[dict[str, str]]:
         """Create Shamir's secret shares for key using proper finite field arithmetic"""
         shares_tuples = split_secret_bytes(key, threshold, total)
 
@@ -520,7 +520,7 @@ class KeyManager:
 
         return shares
 
-    def reconstruct_key_from_shares(self, shares: List[Dict[str, str]]) -> bytes:
+    def reconstruct_key_from_shares(self, shares: list[dict[str, str]]) -> bytes:
         """Reconstruct key from Shamir's shares using proper Lagrange interpolation"""
         if not shares:
             raise CitrateError("No shares provided")

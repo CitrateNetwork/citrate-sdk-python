@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import pathlib
 import re
-import tomllib
 
 import pytest
+import tomllib
 
 PYPROJECT = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
 

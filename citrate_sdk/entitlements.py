@@ -7,8 +7,8 @@ and never escalates; `capabilities` returns an explicit set. There is no tier or
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Dict, Mapping, Optional
 
 #: The five tiers the authority mints (mirrors citrate-identity TIERS).
 TIERS = ("public", "commercial", "commercial.kyc", "academic", "confidential")
@@ -26,7 +26,7 @@ class CapabilitySet:
     confidential_docs: bool = False
 
 
-DEFAULT_CAPABILITIES: Dict[str, CapabilitySet] = {
+DEFAULT_CAPABILITIES: dict[str, CapabilitySet] = {
     "public": CapabilitySet(),
     "commercial": CapabilitySet(ecosystem_tx=True, gateway_keys=True),
     # NOT "above" commercial — same content capabilities; the distinction is KYC-verified baseline.
@@ -47,7 +47,7 @@ _TIER_SET = set(TIERS)
 #: consumer-KYC *downgrade*; the tier it returns is what confers capabilities, so a role
 #: never itself buys confidential access. The canonical default is therefore empty. A
 #: relying party that genuinely elevates a specific role registers it here explicitly.
-ROLE_CAPABILITIES: Dict[str, CapabilitySet] = {}
+ROLE_CAPABILITIES: dict[str, CapabilitySet] = {}
 
 
 def normalize_tier(value: object) -> str:
@@ -55,7 +55,7 @@ def normalize_tier(value: object) -> str:
     return value if isinstance(value, str) and value in _TIER_SET else "public"
 
 
-def capabilities(tier: object, overrides: Optional[Mapping[str, CapabilitySet]] = None) -> CapabilitySet:
+def capabilities(tier: object, overrides: Mapping[str, CapabilitySet] | None = None) -> CapabilitySet:
     t = normalize_tier(tier)
     if overrides and t in overrides:
         return overrides[t]
@@ -63,8 +63,8 @@ def capabilities(tier: object, overrides: Optional[Mapping[str, CapabilitySet]] 
 
 
 def capabilities_for_claim(
-    claim: Optional[dict],
-    overrides: Optional[Mapping[str, CapabilitySet]] = None,
+    claim: dict | None,
+    overrides: Mapping[str, CapabilitySet] | None = None,
 ) -> CapabilitySet:
     """Resolve a claim's capability set WITHOUT the truthiness bypass.
 
@@ -83,9 +83,9 @@ def capabilities_for_claim(
 
 
 def resolve_capabilities(
-    claim: Optional[dict],
-    now_ms: Optional[int] = None,
-    overrides: Optional[Mapping[str, CapabilitySet]] = None,
+    claim: dict | None,
+    now_ms: int | None = None,
+    overrides: Mapping[str, CapabilitySet] | None = None,
 ) -> CapabilitySet:
     """Resolve a claim's full capability set, honouring ``expiresAt``.
 
@@ -105,10 +105,10 @@ def resolve_capabilities(
 
 
 def can(
-    claim: Optional[dict],
+    claim: dict | None,
     capability: str,
-    now_ms: Optional[int] = None,
-    overrides: Optional[Mapping[str, CapabilitySet]] = None,
+    now_ms: int | None = None,
+    overrides: Mapping[str, CapabilitySet] | None = None,
 ) -> bool:
     """Whether a claim grants a capability. Expired claims collapse to ``public``; a
     ``citrateRole`` escalates only if it is in the ``ROLE_CAPABILITIES`` allowlist,

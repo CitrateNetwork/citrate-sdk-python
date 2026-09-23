@@ -11,7 +11,8 @@ This example demonstrates:
 
 import os
 import time
-from citrate_sdk import CitrateClient, ModelConfig, ModelType, AccessType
+
+from citrate_sdk import AccessType, CitrateClient, ModelConfig, ModelType
 from citrate_sdk.crypto import KeyManager
 
 
@@ -53,7 +54,7 @@ def main():
         seller_balance = seller.get_balance(seller.key_manager.get_address())
         buyer_balance = buyer.get_balance(buyer.key_manager.get_address())
 
-        print(f"\nInitial balances:")
+        print("\nInitial balances:")
         print(f"Seller: {seller_balance / 10**18:.4f} ETH")
         print(f"Buyer: {buyer_balance / 10**18:.4f} ETH")
 
@@ -101,7 +102,7 @@ def main():
 
         deployment = seller.deploy_model(model_path, config)
 
-        print(f"✅ Premium model deployed!")
+        print("✅ Premium model deployed!")
         print(f"Model ID: {deployment.model_id}")
         print(f"Price: {config.access_price / 10**18} ETH per inference")
 
@@ -122,7 +123,7 @@ def main():
         print(f"\n🔍 Examining model: {deployment.model_id}")
         model_info = buyer.get_model_info(deployment.model_id)
 
-        print(f"Model details:")
+        print("Model details:")
         print(f"  Name: {model_info.get('name')}")
         print(f"  Description: {model_info.get('description')}")
         print(f"  Price: {model_info.get('access_price', 0) / 10**18} ETH")
@@ -133,14 +134,14 @@ def main():
         # precompile, so purchase_model_access() fails closed rather than
         # burning the buyer's payment to a non-precompile address. The demo
         # skips the purchase step until a real access-purchase route is wired.
-        print(f"\n💳 Buyer: (access-purchase skipped — no on-chain purchase precompile yet; SPY-B-001)")
+        print("\n💳 Buyer: (access-purchase skipped — no on-chain purchase precompile yet; SPY-B-001)")
 
         # Wait for transaction confirmation
         print("Waiting for transaction confirmation...")
         time.sleep(5)
 
         # Use the model
-        print(f"\n🧠 Buyer: Running inference on purchased model...")
+        print("\n🧠 Buyer: Running inference on purchased model...")
 
         inference_input = {
             "image": "base64_encoded_image_data_here",
@@ -153,13 +154,13 @@ def main():
             input_data=inference_input
         )
 
-        print(f"✅ Inference completed!")
+        print("✅ Inference completed!")
         print(f"Classification: {result.output_data.get('class', 'unknown')}")
         print(f"Confidence: {result.output_data.get('confidence', 0)}")
         print(f"Gas used: {result.gas_used}")
 
         # Simulate multiple users and usage
-        print(f"\n📊 Simulating marketplace activity...")
+        print("\n📊 Simulating marketplace activity...")
 
         # Create more buyers. These are throwaway SIMULATION accounts (fresh
         # random keypairs), so generating them here is intentional — unlike the
@@ -195,7 +196,7 @@ def main():
                 print(f"  ❌ User {i+1} failed: {e}")
 
         # Check final marketplace stats
-        print(f"\n📈 Final marketplace statistics:")
+        print("\n📈 Final marketplace statistics:")
 
         updated_model_info = seller.get_model_info(deployment.model_id)
         print(f"Total inferences: {updated_model_info.get('total_inferences', 0)}")
@@ -207,7 +208,7 @@ def main():
 
         print(f"Seller revenue earned: {revenue_earned:.4f} ETH")
 
-        print(f"\n💡 Revenue sharing breakdown (per inference):")
+        print("\n💡 Revenue sharing breakdown (per inference):")
         for address, percentage in revenue_shares.items():
             amount = (config.access_price * percentage) / 10**18
             print(f"  {address[:10]}...: {percentage*100}% = {amount:.4f} ETH")

@@ -7,12 +7,13 @@ the funds left the buyer's account with nothing able to credit the purchase
 (destroyed funds). These tests assert the method now raises and signs/broadcasts
 nothing, and that the phantom address is genuinely not a canonical precompile.
 """
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 from citrate_sdk import CitrateClient
-from citrate_sdk.errors import CitrateError
 from citrate_sdk._generated.contract import federation_contract
+from citrate_sdk.errors import CitrateError
 
 MOCK_RPC = "http://localhost:8545"
 MOCK_KEY = "0x" + "1" * 64

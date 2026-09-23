@@ -2,12 +2,13 @@
 Real IPFS integration for Citrate Python SDK
 """
 
-import requests
 import json
-import hashlib
-from typing import Optional, Dict, Any
-from .errors import CitrateError, IPFSError
+from typing import Any
+
+import requests
+
 from ._url_security import enforce_transport_security
+from .errors import IPFSError
 
 
 class IPFSClient:
@@ -111,7 +112,7 @@ class IPFSClient:
         except requests.exceptions.RequestException as e:
             raise IPFSError(f"IPFS connection error: {str(e)}")
 
-    def get_file_info(self, ipfs_hash: str) -> Dict[str, Any]:
+    def get_file_info(self, ipfs_hash: str) -> dict[str, Any]:
         """
         Get file information from IPFS
 
@@ -177,7 +178,7 @@ class IPFSClient:
         except requests.exceptions.RequestException:
             return False
 
-    def get_version(self) -> Optional[str]:
+    def get_version(self) -> str | None:
         """
         Get IPFS node version
 
@@ -224,7 +225,7 @@ class IPFSManager:
     """
 
     def __init__(self, primary_url: str = "http://localhost:5001",
-                 fallback_urls: Optional[list] = None,
+                 fallback_urls: list | None = None,
                  allow_insecure_http: bool = False,
                  timeout: float = 30.0):
         """
@@ -341,7 +342,7 @@ class IPFSManager:
 _ipfs_manager = None
 
 
-def get_ipfs_manager(ipfs_urls: Optional[list] = None) -> IPFSManager:
+def get_ipfs_manager(ipfs_urls: list | None = None) -> IPFSManager:
     """
     Get or create global IPFS manager instance
 
@@ -371,7 +372,7 @@ def get_ipfs_manager(ipfs_urls: Optional[list] = None) -> IPFSManager:
     return _ipfs_manager
 
 
-def upload_to_ipfs(data: bytes, ipfs_urls: Optional[list] = None) -> str:
+def upload_to_ipfs(data: bytes, ipfs_urls: list | None = None) -> str:
     """
     Convenience function to upload data to IPFS
 
@@ -386,7 +387,7 @@ def upload_to_ipfs(data: bytes, ipfs_urls: Optional[list] = None) -> str:
     return manager.upload(data)
 
 
-def download_from_ipfs(ipfs_hash: str, ipfs_urls: Optional[list] = None) -> bytes:
+def download_from_ipfs(ipfs_hash: str, ipfs_urls: list | None = None) -> bytes:
     """
     Convenience function to download data from IPFS
 

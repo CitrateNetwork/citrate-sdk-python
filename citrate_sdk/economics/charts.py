@@ -8,8 +8,6 @@ as PNG files at 150 DPI.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 try:
@@ -374,7 +372,7 @@ def plot_sensitivity_heatmap(
     x_label: str = "Adoption Rate Multiplier",
     y_label: str = "Staking Ratio Multiplier",
     metric: str = "apy",
-    title: Optional[str] = None,
+    title: str | None = None,
 ) -> None:
     """
     4x4 (or NxM) grid heatmap: two parameter dimensions mapped to a metric.
@@ -388,8 +386,8 @@ def plot_sensitivity_heatmap(
     _require_matplotlib()
 
     # Extract unique x and y values
-    x_vals = sorted(set(k[0] for k in results.keys()))
-    y_vals = sorted(set(k[1] for k in results.keys()))
+    x_vals = sorted({k[0] for k in results.keys()})
+    y_vals = sorted({k[1] for k in results.keys()})
 
     grid = np.zeros((len(y_vals), len(x_vals)))
     for (xv, yv), res in results.items():

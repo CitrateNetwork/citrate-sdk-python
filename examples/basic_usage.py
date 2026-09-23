@@ -9,10 +9,11 @@ This example demonstrates:
 4. Handling results
 """
 
-import os
 import json
+import os
 from pathlib import Path
-from citrate_sdk import CitrateClient, ModelConfig, ModelType, AccessType
+
+from citrate_sdk import AccessType, CitrateClient, ModelConfig, ModelType
 from citrate_sdk.crypto import KeyManager
 
 
@@ -84,7 +85,7 @@ def main():
         print("Deploying model to Citrate...")
         deployment = client.deploy_model(model_path, config)
 
-        print(f"✅ Model deployed successfully!")
+        print("✅ Model deployed successfully!")
         print(f"Model ID: {deployment.model_id}")
         print(f"Transaction: {deployment.tx_hash}")
         print(f"IPFS Hash: {deployment.ipfs_hash}")
@@ -107,7 +108,7 @@ def main():
             input_data=inference_input
         )
 
-        print(f"✅ Inference completed!")
+        print("✅ Inference completed!")
         print(f"Output: {result.output_data}")
         print(f"Gas used: {result.gas_used}")
         print(f"Execution time: {result.execution_time}ms")

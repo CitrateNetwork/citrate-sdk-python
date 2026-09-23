@@ -70,8 +70,3 @@ class IPFSError(CitrateError):
 class ContractError(CitrateError):
     """Smart contract execution error"""
     pass
-
-
-class IPFSError(CitrateError):
-    """IPFS storage error"""
-    pass

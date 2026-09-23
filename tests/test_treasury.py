@@ -8,17 +8,17 @@ Verifies that each method:
   - Raises ConfigurationError when contract addresses are missing
 """
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
 from eth_abi import encode as abi_encode
 
 from citrate_sdk.abi import AbiInterface, keccak256
 from citrate_sdk.errors import ConfigurationError
 from citrate_sdk.treasury import (
-    TreasuryManager,
-    STABLECOIN_TREASURY_ABI,
     BULK_COMPUTE_GATEWAY_ABI,
+    STABLECOIN_TREASURY_ABI,
+    TreasuryManager,
 )
 
 # ---------------------------------------------------------------------------

@@ -19,9 +19,9 @@ Data sources:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from .abi import AbiInterface, from_wei, to_wei
+from .abi import AbiInterface
 from .errors import ConfigurationError
 
 # ============================================================================
@@ -68,10 +68,10 @@ class TreasuryManager:
     def __init__(
         self,
         rpc_call: Any,
-        default_account: Optional[str] = None,
+        default_account: str | None = None,
         gas_limit: int = 500_000,
         gas_price: str = "0x3b9aca00",
-        contract_addresses: Optional[Dict[str, str]] = None,
+        contract_addresses: dict[str, str] | None = None,
     ) -> None:
         self._rpc_call = rpc_call
         self._default_account = default_account
@@ -164,7 +164,7 @@ class TreasuryManager:
     # BulkComputeGateway — Credit Queries
     # -------------------------------------------------------------------
 
-    def get_credit_balance(self, institution: Optional[str] = None) -> int:
+    def get_credit_balance(self, institution: str | None = None) -> int:
         """Get compute credit balance in PFLOP-hours (18 decimals).
 
         Data source: BulkComputeGateway.getCreditBalance(address) via eth_call.
@@ -185,7 +185,7 @@ class TreasuryManager:
         (credits,) = self._gateway_iface.decode_function_result("getCreditBalance", result)
         return int(credits)
 
-    def estimate_calls_remaining(self, institution: Optional[str] = None, avg_tokens: int = 1000) -> int:
+    def estimate_calls_remaining(self, institution: str | None = None, avg_tokens: int = 1000) -> int:
         """Estimate inference calls remaining for institution.
 
         Data source: BulkComputeGateway.estimateCallsRemaining(address, uint256) via eth_call.

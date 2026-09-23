@@ -2,20 +2,21 @@
 Citrate Client - Main SDK interface for Citrate blockchain interaction
 """
 
-import json
-import requests
-from typing import Dict, Any, List, Optional, Union
-from dataclasses import dataclass, asdict
-from pathlib import Path
 import hashlib
+import json
 import time
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
 
-from .models import ModelConfig, ModelDeployment, InferenceRequest, InferenceResult
-from .crypto import EncryptionConfig, KeyManager
-from .errors import CitrateError, ModelNotFoundError, InsufficientFundsError
-from .ipfs import upload_to_ipfs
-from ._url_security import enforce_transport_security
+import requests
+
 from ._generated import contract as _contract
+from ._url_security import enforce_transport_security
+from .crypto import EncryptionConfig, KeyManager
+from .errors import CitrateError, ModelNotFoundError
+from .ipfs import upload_to_ipfs
+from .models import InferenceRequest, InferenceResult, ModelConfig, ModelDeployment
 
 # SPY-B-006: receipt log topics are keccak256 of the event signature, NOT the
 # ASCII hex of the event name. Pre-fix the client matched
@@ -48,9 +49,9 @@ class CitrateClient:
     - Payment and revenue sharing
     """
 
-    def __init__(self, rpc_url: str = "http://localhost:8545", private_key: Optional[str] = None,
+    def __init__(self, rpc_url: str = "http://localhost:8545", private_key: str | None = None,
                  allow_insecure_http: bool = False, timeout: float = 30.0,
-                 chain_id: Optional[int] = None):
+                 chain_id: int | None = None):
         """
         Initialize Citrate client.
 
@@ -95,14 +96,14 @@ class CitrateClient:
         self._request_id = 0
         # RM-G.4 — cached EIP-155 chain id, bound into every signed tx so a
         # signature cannot be replayed on another network.
-        self._chain_id: Optional[int] = None
+        self._chain_id: int | None = None
 
     def _next_request_id(self) -> int:
         """Get next JSON-RPC request ID"""
         self._request_id += 1
         return self._request_id
 
-    def _rpc_call(self, method: str, params: List[Any] = None) -> Any:
+    def _rpc_call(self, method: str, params: list[Any] = None) -> Any:
         """
         Make JSON-RPC call to Citrate node.
 
@@ -166,7 +167,7 @@ class CitrateClient:
 
     def deploy_model(
         self,
-        model_path: Union[str, Path],
+        model_path: str | Path,
         config: ModelConfig
     ) -> ModelDeployment:
         """
@@ -246,7 +247,7 @@ class CitrateClient:
     def inference(
         self,
         model_id: str,
-        input_data: Dict[str, Any],
+        input_data: dict[str, Any],
         encrypted: bool = False,
         max_gas: int = 1000000,
         recipient_public_key: str = None
@@ -340,7 +341,7 @@ class CitrateClient:
             tx_hash=tx_hash
         )
 
-    def get_model_info(self, model_id: str) -> Dict[str, Any]:
+    def get_model_info(self, model_id: str) -> dict[str, Any]:
         """Get model deployment information"""
         params = [model_id]
         result = self._rpc_call("citrate_getModel", params)
@@ -350,7 +351,7 @@ class CitrateClient:
 
         return result
 
-    def list_models(self, owner: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+    def list_models(self, owner: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         """List deployed models.
 
         SEC-037: the node answers `{"models": [...]}`, but this is annotated
@@ -412,8 +413,7 @@ class CitrateClient:
         addr = table.get(name)
         if not addr:
             raise CitrateError(
-                "unknown precompile %r; vendored table has: %s"
-                % (name, ", ".join(sorted(table)))
+                "unknown precompile {!r}; vendored table has: {}".format(name, ", ".join(sorted(table)))
             )
         return addr
 
@@ -447,7 +447,7 @@ class CitrateClient:
     def _send_transaction(
         self,
         to_address: str,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         value: int = 0,
         gas_limit: int = 500000
     ) -> str:
@@ -479,7 +479,7 @@ class CitrateClient:
         # Send raw transaction
         return self._rpc_call("eth_sendRawTransaction", [signed_tx])
 
-    def _wait_for_receipt(self, tx_hash: str, timeout: int = 60) -> Dict[str, Any]:
+    def _wait_for_receipt(self, tx_hash: str, timeout: int = 60) -> dict[str, Any]:
         """Wait for transaction receipt"""
         start_time = time.time()
 
@@ -495,7 +495,7 @@ class CitrateClient:
 
         raise CitrateError(f"Transaction timeout: {tx_hash}")
 
-    def _extract_model_id_from_receipt(self, receipt: Dict[str, Any]) -> str:
+    def _extract_model_id_from_receipt(self, receipt: dict[str, Any]) -> str:
         """Extract model ID from deployment receipt logs.
 
         SPY-B-006: match ``topics[0]`` against the keccak256 of the event
@@ -514,12 +514,11 @@ class CitrateClient:
                 return log["data"][:66]  # First 32 bytes as hex
 
         raise CitrateError(
-            "Model ID not found in deployment receipt (tx %s); the transaction "
-            "may already be mined — do not blindly resubmit."
-            % receipt.get("transactionHash", "?")
+            "Model ID not found in deployment receipt (tx {}); the transaction "
+            "may already be mined — do not blindly resubmit.".format(receipt.get("transactionHash", "?"))
         )
 
-    def _extract_inference_output(self, receipt: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_inference_output(self, receipt: dict[str, Any]) -> dict[str, Any]:
         """Extract inference output from execution receipt.
 
         SPY-B-006: match ``topics[0]`` against the keccak256 of the event
@@ -536,6 +535,5 @@ class CitrateClient:
                 return json.loads(data_bytes.decode())
 
         raise CitrateError(
-            "Inference output not found in receipt (tx %s)"
-            % receipt.get("transactionHash", "?")
+            "Inference output not found in receipt (tx {})".format(receipt.get("transactionHash", "?"))
         )

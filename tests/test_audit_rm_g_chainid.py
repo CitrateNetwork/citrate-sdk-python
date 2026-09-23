@@ -2,6 +2,7 @@
 be replayed cross-network. CI-gated (eth_account/cryptography not installable
 in the read-only audit env)."""
 from unittest.mock import patch
+
 from citrate_sdk.client import CitrateClient
 
 

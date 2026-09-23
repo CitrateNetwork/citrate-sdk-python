@@ -3,8 +3,8 @@ Data models for Citrate SDK
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional
 from enum import Enum
+from typing import Any
 
 
 class ModelType(Enum):
@@ -47,15 +47,15 @@ class ModelConfig:
     # Access control
     access_type: AccessType = AccessType.PUBLIC
     access_price: int = 0  # Price in wei per inference
-    access_list: Optional[List[str]] = None  # Whitelist addresses
+    access_list: list[str] | None = None  # Whitelist addresses
 
     # Encryption
     encrypted: bool = False
-    encryption_config: Optional[EncryptionConfig] = None
+    encryption_config: EncryptionConfig | None = None
 
     # Metadata
-    metadata: Optional[Dict[str, Any]] = None
-    tags: List[str] = field(default_factory=list)
+    metadata: dict[str, Any] | None = None
+    tags: list[str] = field(default_factory=list)
 
     # Performance
     max_batch_size: int = 1
@@ -63,7 +63,7 @@ class ModelConfig:
     memory_limit_mb: int = 1024
 
     # Revenue sharing
-    revenue_shares: Optional[Dict[str, float]] = None  # address -> percentage
+    revenue_shares: dict[str, float] | None = None  # address -> percentage
 
 
 @dataclass
@@ -75,31 +75,31 @@ class ModelDeployment:
     encrypted: bool
     access_price: int
     deployment_time: int
-    gas_used: Optional[int] = None
-    deployment_cost: Optional[int] = None
+    gas_used: int | None = None
+    deployment_cost: int | None = None
 
 
 @dataclass
 class InferenceRequest:
     """Request for model inference"""
     model_id: str
-    input_data: Dict[str, Any]
+    input_data: dict[str, Any]
     encrypted: bool = False
     batch_size: int = 1
     timeout: int = 30
-    timestamp: Optional[int] = None
+    timestamp: int | None = None
 
 
 @dataclass
 class InferenceResult:
     """Result of model inference"""
     model_id: str
-    output_data: Dict[str, Any]
+    output_data: dict[str, Any]
     gas_used: int
     execution_time: float  # milliseconds
     tx_hash: str
-    confidence: Optional[float] = None
-    metadata: Optional[Dict[str, Any]] = None
+    confidence: float | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -117,8 +117,8 @@ class ModelInfo:
     deployment_time: int
     total_inferences: int
     total_revenue: int
-    metadata: Dict[str, Any]
-    tags: List[str]
+    metadata: dict[str, Any]
+    tags: list[str]
 
 
 @dataclass
@@ -140,7 +140,7 @@ class PaymentInfo:
     price_per_inference: int
     payment_token: str = "ETH"
     payment_address: str = ""
-    revenue_sharing: Optional[Dict[str, float]] = None
+    revenue_sharing: dict[str, float] | None = None
 
 
 @dataclass
@@ -150,7 +150,7 @@ class AccessControlEntry:
     access_level: str  # "read", "write", "admin"
     granted_by: str
     granted_at: int
-    expires_at: Optional[int] = None
+    expires_at: int | None = None
 
 
 @dataclass

@@ -4,7 +4,6 @@ Using GF(2^8) for byte-oriented operations
 """
 
 import secrets
-from typing import List, Tuple
 
 
 class GF256:
@@ -130,7 +129,7 @@ class ShamirSecretSharing:
         self.threshold = threshold
         self.total_shares = total_shares
 
-    def split_secret(self, secret: bytes) -> List[Tuple[int, bytes]]:
+    def split_secret(self, secret: bytes) -> list[tuple[int, bytes]]:
         """
         Split secret into shares
 
@@ -160,7 +159,7 @@ class ShamirSecretSharing:
 
         return shares
 
-    def reconstruct_secret(self, shares: List[Tuple[int, bytes]]) -> bytes:
+    def reconstruct_secret(self, shares: list[tuple[int, bytes]]) -> bytes:
         """
         Reconstruct secret from shares
 
@@ -193,7 +192,7 @@ class ShamirSecretSharing:
 
         return bytes(secret_bytes)
 
-    def _evaluate_polynomial_at_point(self, polynomials: List[List[int]], x: int) -> bytes:
+    def _evaluate_polynomial_at_point(self, polynomials: list[list[int]], x: int) -> bytes:
         """
         Evaluate polynomial at point x for each byte of the secret
         """
@@ -212,7 +211,7 @@ class ShamirSecretSharing:
 
         return bytes(share_bytes)
 
-    def _lagrange_interpolation(self, points: List[Tuple[int, int]], x: int) -> int:
+    def _lagrange_interpolation(self, points: list[tuple[int, int]], x: int) -> int:
         """
         Lagrange interpolation to find f(x) given points
 
@@ -247,7 +246,7 @@ class ShamirSecretSharing:
 
         return result
 
-    def verify_shares(self, shares: List[Tuple[int, bytes]]) -> bool:
+    def verify_shares(self, shares: list[tuple[int, bytes]]) -> bool:
         """
         Verify that shares are consistent (can be used to detect tampering)
 
@@ -271,7 +270,7 @@ class ShamirSecretSharing:
             return False
 
 
-def split_secret_bytes(secret: bytes, threshold: int, total_shares: int) -> List[Tuple[int, bytes]]:
+def split_secret_bytes(secret: bytes, threshold: int, total_shares: int) -> list[tuple[int, bytes]]:
     """
     Convenience function to split secret bytes
 
@@ -287,7 +286,7 @@ def split_secret_bytes(secret: bytes, threshold: int, total_shares: int) -> List
     return sss.split_secret(secret)
 
 
-def reconstruct_secret_bytes(shares: List[Tuple[int, bytes]], threshold: int) -> bytes:
+def reconstruct_secret_bytes(shares: list[tuple[int, bytes]], threshold: int) -> bytes:
     """
     Convenience function to reconstruct secret bytes
 

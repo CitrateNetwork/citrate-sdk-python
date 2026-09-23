@@ -10,23 +10,24 @@ The HTTP boundary is an injectable ``transport`` callable for offline testing:
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import requests
 
 from ._generated import contract as _contract
 from ._url_security import enforce_transport_security
 
-Transport = Callable[[str, str, Dict[str, str], Optional[str]], Tuple[int, Any]]
+Transport = Callable[[str, str, dict[str, str], str | None], tuple[int, Any]]
 
 
 class GatewayError(Exception):
-    def __init__(self, message: str, status: Optional[int] = None):
+    def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
         self.status = status
 
 
-def _default_transport(method: str, url: str, headers: Dict[str, str], body: Optional[str]) -> Tuple[int, Any]:
+def _default_transport(method: str, url: str, headers: dict[str, str], body: str | None) -> tuple[int, Any]:
     resp = requests.request(method, url, headers=headers, data=body, timeout=300)
     parsed: Any = {}
     if resp.text:
@@ -38,11 +39,11 @@ def _default_transport(method: str, url: str, headers: Dict[str, str], body: Opt
 
 
 class GatewayClient:
-    def __init__(self, api_key: str, base_url: Optional[str] = None, transport: Optional[Transport] = None,
+    def __init__(self, api_key: str, base_url: str | None = None, transport: Transport | None = None,
                  allow_insecure_http: bool = False):
         gw = _contract.gateway()
         if not api_key:
-            raise GatewayError("gateway API key not configured (need a %s key)" % gw["keyPrefix"])
+            raise GatewayError("gateway API key not configured (need a {} key)".format(gw["keyPrefix"]))
         self._api_key = api_key
         base = (base_url or gw["baseUrl"]).rstrip("/")
         # SPY-B-004: this client sends `Authorization: Bearer <cgk_ key>` on every
@@ -52,7 +53,7 @@ class GatewayClient:
         self._base = base
         self._transport = transport or _default_transport
 
-    def _call(self, method: str, path: str, body: Optional[str] = None) -> Any:
+    def _call(self, method: str, path: str, body: str | None = None) -> Any:
         headers = {"authorization": "Bearer " + self._api_key}
         if body is not None:
             headers["content-type"] = "application/json"
@@ -61,7 +62,7 @@ class GatewayClient:
             raise self._error(status)
         return parsed
 
-    def chat_completions(self, model: str, messages: List[Dict[str, str]], **kwargs: Any) -> Any:
+    def chat_completions(self, model: str, messages: list[dict[str, str]], **kwargs: Any) -> Any:
         """POST /v1/chat/completions — OpenAI-shaped request and response."""
         payload = {"model": model, "messages": messages}
         payload.update(kwargs)
@@ -80,7 +81,7 @@ class GatewayClient:
         return parsed
 
     @staticmethod
-    def _error(status: int) -> "GatewayError":
+    def _error(status: int) -> GatewayError:
         msg = {
             401: "unauthorized: unknown or revoked gateway key",
             402: "insufficient balance: top up the gateway key",

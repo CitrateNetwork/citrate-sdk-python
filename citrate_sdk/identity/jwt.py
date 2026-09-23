@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
@@ -28,7 +28,7 @@ def _b64url_int(s: str) -> int:
     return int.from_bytes(_b64url_bytes(s), "big")
 
 
-def _decode(seg: str) -> Dict[str, Any]:
+def _decode(seg: str) -> dict[str, Any]:
     try:
         return json.loads(_b64url_bytes(seg).decode("utf-8"))
     except Exception:
@@ -39,18 +39,18 @@ def verify_id_token(
     token: str,
     issuer: str,
     audience: str,
-    jwks: List[Dict[str, Any]],
-    now_ms: Optional[int] = None,
+    jwks: list[dict[str, Any]],
+    now_ms: int | None = None,
     clock_tolerance_sec: int = 60,
-    nonce: Optional[str] = None,
-) -> Dict[str, Any]:
+    nonce: str | None = None,
+) -> dict[str, Any]:
     """Verify an OIDC ID token and return its (now-trusted) claims. Raises IdTokenError."""
     parts = token.split(".")
     if len(parts) != 3:
         raise IdTokenError("token must have three segments")
     header = _decode(parts[0])
     if header.get("alg") != "RS256":  # rejects alg:none and alg-confusion
-        raise IdTokenError("unsupported or unsafe alg: %r (only RS256 accepted)" % header.get("alg"))
+        raise IdTokenError("unsupported or unsafe alg: {!r} (only RS256 accepted)".format(header.get("alg")))
     if not parts[2]:
         raise IdTokenError("empty signature")
 
@@ -72,7 +72,7 @@ def verify_id_token(
 
     payload = _decode(parts[1])
     if payload.get("iss") != issuer:
-        raise IdTokenError("iss mismatch: %s" % payload.get("iss"))
+        raise IdTokenError("iss mismatch: {}".format(payload.get("iss")))
     aud = payload.get("aud")
     aud_ok = (audience in aud) if isinstance(aud, list) else (aud == audience)
     if not aud_ok:

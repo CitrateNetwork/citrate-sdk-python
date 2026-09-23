@@ -2,13 +2,15 @@
 Unit tests for Citrate SDK crypto module
 """
 
+
 import pytest
-import json
-from unittest.mock import patch, Mock
 
 from citrate_sdk.crypto import (
-    KeyManager, EncryptionConfig, generate_model_key,
-    hash_model_data, verify_model_integrity
+    EncryptionConfig,
+    KeyManager,
+    generate_model_key,
+    hash_model_data,
+    verify_model_integrity,
 )
 from citrate_sdk.errors import CitrateError
 
@@ -197,7 +199,7 @@ class TestEncryptionConfig:
 
         assert config.algorithm == "AES-256-GCM"
         assert config.key_derivation == "HKDF-SHA256"
-        assert config.access_control == True
+        assert config.access_control
         assert config.threshold_shares == 0
         assert config.total_shares == 0
 
@@ -213,7 +215,7 @@ class TestEncryptionConfig:
         assert config.algorithm == "AES-128-GCM"
         assert config.threshold_shares == 3
         assert config.total_shares == 5
-        assert config.access_control == False
+        assert not config.access_control
 
 
 class TestCryptoUtilities:
@@ -251,7 +253,7 @@ class TestCryptoUtilities:
         expected_hash = hash_model_data(data)
 
         is_valid = verify_model_integrity(data, expected_hash)
-        assert is_valid == True
+        assert is_valid
 
     def test_verify_model_integrity_invalid(self):
         """Test model integrity verification with invalid hash"""
@@ -259,7 +261,7 @@ class TestCryptoUtilities:
         wrong_hash = "1234567890abcdef" * 4  # Wrong hash
 
         is_valid = verify_model_integrity(data, wrong_hash)
-        assert is_valid == False
+        assert not is_valid
 
     def test_verify_model_integrity_tampered_data(self):
         """Test model integrity verification with tampered data"""
@@ -268,7 +270,7 @@ class TestCryptoUtilities:
         original_hash = hash_model_data(original_data)
 
         is_valid = verify_model_integrity(tampered_data, original_hash)
-        assert is_valid == False
+        assert not is_valid
 
 
 class TestErrorScenarios:

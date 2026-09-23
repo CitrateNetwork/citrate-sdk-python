@@ -19,7 +19,6 @@ Each test is RED on pre-fix code and GREEN after. Signing-path tests are CI-gate
 from __future__ import annotations
 
 import inspect
-import warnings
 from unittest.mock import patch
 
 import pytest
@@ -101,8 +100,8 @@ def test_transport_gate_applied_to_every_credential_client():
     """RED: gateway/memory/identity never invoked enforce_transport_security. This
     is the finding's own repro, inverted to require full coverage."""
     from citrate_sdk import client as cc
-    from citrate_sdk import ipfs as ip
     from citrate_sdk import gateway as g
+    from citrate_sdk import ipfs as ip
     from citrate_sdk import memory as m
     from citrate_sdk.identity import client as ic
 

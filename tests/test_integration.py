@@ -13,10 +13,8 @@ Environment variables:
 
 import os
 import time
-import json
+
 import pytest
-import hashlib
-from typing import Optional, Dict, Any
 
 # Import SDK modules
 from citrate_sdk.client import CitrateClient
@@ -507,7 +505,7 @@ class TestErrorHandling:
         property that matters — and the one that was actually broken — is that
         the caller's timeout is threaded through to the request at all.
         """
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         client = CitrateClient(rpc_url=RPC_ENDPOINT, timeout=2.5)
         fake = MagicMock()

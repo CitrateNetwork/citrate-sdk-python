@@ -23,24 +23,24 @@ import time
 # Add parent dir to path so we can import citrate_sdk
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from citrate_sdk.economics.simulation import EconomicSimulation
 from citrate_sdk.economics.charts import (
-    plot_supply_curve,
-    plot_staking_apy,
-    plot_fee_revenue,
     plot_burn_analysis,
-    plot_floor_price,
     plot_death_spiral,
-    plot_sensitivity_heatmap,
+    plot_fee_revenue,
+    plot_floor_price,
     plot_revenue_breakdown,
+    plot_sensitivity_heatmap,
+    plot_staking_apy,
+    plot_supply_curve,
 )
 from citrate_sdk.economics.parameters import (
-    TOTAL_SUPPLY,
     BASE_BLOCK_REWARD,
-    HALVING_INTERVAL,
     BME_BURN_RATE,
+    HALVING_INTERVAL,
     MARKET_MAKER_GAS_BPS,
+    TOTAL_SUPPLY,
 )
+from citrate_sdk.economics.simulation import EconomicSimulation, SimulationResult
 
 CHART_DIR = os.path.join(os.path.dirname(__file__), 'charts')
 

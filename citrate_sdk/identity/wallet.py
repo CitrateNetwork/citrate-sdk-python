@@ -11,7 +11,6 @@ only ground truth.
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import requests
 from eth_utils import keccak, to_checksum_address
@@ -50,7 +49,7 @@ def _erc1967_init_code_hash(implementation: str) -> bytes:
 
 
 def predict_wallet_address(
-    user_id: str, factory: Optional[str] = None, implementation: Optional[str] = None
+    user_id: str, factory: str | None = None, implementation: str | None = None
 ) -> str:
     """Predict the counterfactual smart-wallet address for a userId. Pure + offline."""
     if not (isinstance(user_id, str) and user_id.startswith("0x") and len(user_id) == 66):
@@ -68,9 +67,9 @@ def predict_wallet_address(
 
 def verify_wallet_address_on_chain(
     user_id: str,
-    rpc_url: Optional[str] = None,
-    factory: Optional[str] = None,
-    implementation: Optional[str] = None,
+    rpc_url: str | None = None,
+    factory: str | None = None,
+    implementation: str | None = None,
     timeout: float = 10.0,
 ) -> str:
     """Verify the local prediction against the on-chain factory (ground truth).
@@ -95,7 +94,6 @@ def verify_wallet_address_on_chain(
     onchain = to_checksum_address("0x" + result[-40:])
     if onchain != local:
         raise WalletPredictionError(
-            "wallet address mismatch: local %s != on-chain factory %s — do not fund this address"
-            % (local, onchain)
+            f"wallet address mismatch: local {local} != on-chain factory {onchain} — do not fund this address"
         )
     return local

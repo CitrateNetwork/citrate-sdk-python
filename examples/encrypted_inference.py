@@ -9,11 +9,12 @@ This example demonstrates:
 4. Key sharing and threshold schemes
 """
 
-import os
 import json
+import os
 from pathlib import Path
-from citrate_sdk import CitrateClient, ModelConfig, ModelType, AccessType
-from citrate_sdk.crypto import KeyManager, EncryptionConfig
+
+from citrate_sdk import AccessType, CitrateClient, ModelConfig, ModelType
+from citrate_sdk.crypto import EncryptionConfig, KeyManager
 
 
 def main():
@@ -91,7 +92,7 @@ def main():
         print("\n🔒 Deploying encrypted model...")
         deployment = client.deploy_model(model_path, config)
 
-        print(f"✅ Encrypted model deployed!")
+        print("✅ Encrypted model deployed!")
         print(f"Model ID: {deployment.model_id}")
         print(f"Transaction: {deployment.tx_hash}")
         print(f"Encrypted: {deployment.encrypted}")
@@ -107,7 +108,7 @@ def main():
         print(f"Bob address: {bob.get_address()}")
 
         # Get shared keys for secure communication
-        owner_pubkey = client.key_manager.get_public_key()
+        client.key_manager.get_public_key()
         alice_pubkey = alice.get_public_key()
         bob_pubkey = bob.get_public_key()
 
@@ -145,7 +146,7 @@ def main():
             recipient_public_key=recipient_pubkey,
         )
 
-        print(f"✅ Encrypted inference completed!")
+        print("✅ Encrypted inference completed!")
         print(f"Output (encrypted): {str(result.output_data)[:100]}...")
         print(f"Gas used: {result.gas_used}")
         print(f"Execution time: {result.execution_time}ms")

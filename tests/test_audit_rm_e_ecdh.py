@@ -7,6 +7,7 @@ which put the raw key in the envelope.
 """
 
 import json
+
 import pytest
 
 from citrate_sdk.crypto import KeyManager

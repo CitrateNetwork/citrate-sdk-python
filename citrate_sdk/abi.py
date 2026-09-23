@@ -14,11 +14,12 @@ ABI encoding so that calldata is byte-identical to what the JS SDK emits via
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Sequence, Tuple
+from collections.abc import Sequence
+from typing import Any
 
-from eth_abi import encode as abi_encode, decode as abi_decode  # type: ignore[import-untyped]
+from eth_abi import decode as abi_decode
+from eth_abi import encode as abi_encode  # type: ignore[import-untyped]
 from web3 import Web3  # type: ignore[import-untyped]
-
 
 # ---------------------------------------------------------------------------
 # Keccak-256 helper
@@ -64,7 +65,7 @@ _FUNC_RE = re.compile(
 )
 
 
-def _parse_param_types(raw: str) -> List[str]:
+def _parse_param_types(raw: str) -> list[str]:
     """Parse a comma-separated param string into a list of Solidity types.
 
     e.g. "uint256 poolId, address member" -> ["uint256", "address"]
@@ -72,7 +73,7 @@ def _parse_param_types(raw: str) -> List[str]:
     if not raw or not raw.strip():
         return []
     parts = [p.strip() for p in raw.split(",") if p.strip()]
-    types: List[str] = []
+    types: list[str] = []
     for part in parts:
         tokens = part.split()
         # Handle "string[]" -> type is "string[]"
@@ -85,7 +86,7 @@ class AbiFunction:
 
     __slots__ = ("name", "input_types", "output_types", "selector")
 
-    def __init__(self, name: str, input_types: List[str], output_types: List[str]) -> None:
+    def __init__(self, name: str, input_types: list[str], output_types: list[str]) -> None:
         self.name = name
         self.input_types = input_types
         self.output_types = output_types
@@ -101,7 +102,7 @@ class AbiInterface:
     """
 
     def __init__(self, fragments: Sequence[str]) -> None:
-        self._funcs: Dict[str, AbiFunction] = {}
+        self._funcs: dict[str, AbiFunction] = {}
         for frag in fragments:
             m = _FUNC_RE.search(frag)
             if not m:
@@ -123,7 +124,7 @@ class AbiInterface:
         encoded = abi_encode(fn.input_types, list(args))
         return "0x" + fn.selector.hex() + encoded.hex()
 
-    def decode_function_result(self, name: str, data: str) -> Tuple[Any, ...]:
+    def decode_function_result(self, name: str, data: str) -> tuple[Any, ...]:
         """Decode ABI-encoded return data from an eth_call result.
 
         Returns a tuple of decoded values.

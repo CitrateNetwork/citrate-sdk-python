@@ -11,13 +11,13 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 _ARTIFACT = Path(__file__).with_name("federation_contract.json")
 
 
 @lru_cache(maxsize=1)
-def federation_contract() -> Dict[str, Any]:
+def federation_contract() -> dict[str, Any]:
     """Return the full contract artifact as a dict."""
     return json.loads(_ARTIFACT.read_text(encoding="utf-8"))
 
@@ -34,33 +34,33 @@ def ws_url() -> str:
     return str(federation_contract()["chain"]["wsUrl"])
 
 
-def aa_stack() -> Dict[str, str]:
+def aa_stack() -> dict[str, str]:
     """ERC-4337 account-abstraction stack addresses (EntryPoint, factory, paymaster, …)."""
     return dict(federation_contract()["aaStack"])
 
 
-def contracts() -> Dict[str, str]:
+def contracts() -> dict[str, str]:
     return dict(federation_contract()["contracts"])
 
 
-def membership() -> Dict[str, Any]:
+def membership() -> dict[str, Any]:
     return dict(federation_contract()["membership"])
 
 
-def precompiles() -> Dict[str, str]:
+def precompiles() -> dict[str, str]:
     return dict(federation_contract()["precompiles"])
 
 
-def identity() -> Dict[str, Any]:
+def identity() -> dict[str, Any]:
     """OIDC issuer/discovery/jwks/scopes + the entitlement claim URI."""
     return dict(federation_contract()["identity"])
 
 
-def gateway() -> Dict[str, str]:
+def gateway() -> dict[str, str]:
     return dict(federation_contract()["gateway"])
 
 
-def entitlement_tiers() -> List[str]:
+def entitlement_tiers() -> list[str]:
     return list(federation_contract()["entitlements"]["tiers"])
 
 

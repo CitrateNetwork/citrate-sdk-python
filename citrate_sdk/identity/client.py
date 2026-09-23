@@ -11,9 +11,9 @@ The default transport uses ``requests``.
 from __future__ import annotations
 
 import json
-import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 from urllib.parse import urlencode
 
 import requests
@@ -24,16 +24,16 @@ from ..entitlements import CapabilitySet, normalize_tier, resolve_capabilities
 from .jwt import verify_id_token
 from .pkce import Pkce, create_pkce
 
-Transport = Callable[[str, str, Dict[str, str], Optional[str]], Tuple[int, Any]]
+Transport = Callable[[str, str, dict[str, str], str | None], tuple[int, Any]]
 
 
 class IdentityError(Exception):
-    def __init__(self, message: str, status: Optional[int] = None):
+    def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
         self.status = status
 
 
-def _default_transport(method: str, url: str, headers: Dict[str, str], body: Optional[str]) -> Tuple[int, Any]:
+def _default_transport(method: str, url: str, headers: dict[str, str], body: str | None) -> tuple[int, Any]:
     resp = requests.request(method, url, headers=headers, data=body, timeout=30)
     parsed: Any = {}
     if resp.status_code != 204 and resp.text:
@@ -48,8 +48,8 @@ def _default_transport(method: str, url: str, headers: Dict[str, str], body: Opt
 class TokenSet:
     id_token: str
     access_token: str
-    refresh_token: Optional[str]
-    claims: Dict[str, Any]
+    refresh_token: str | None
+    claims: dict[str, Any]
 
 
 @dataclass
@@ -57,17 +57,17 @@ class UserInfo:
     sub: str
     tier: str
     capabilities: CapabilitySet
-    wallet_address: Optional[str]
-    wallets: Optional[List[str]]
-    kyc_status: Optional[str]
-    raw: Dict[str, Any]
+    wallet_address: str | None
+    wallets: list[str] | None
+    kyc_status: str | None
+    raw: dict[str, Any]
 
 
 @dataclass
 class IdentityClient:
     client_id: str
     redirect_uri: str
-    scopes: Optional[List[str]] = None
+    scopes: list[str] | None = None
     transport: Transport = _default_transport
     # SPY-B-004: this client posts to token/userinfo/session endpoints taken from
     # the discovery document and carries access_token / refresh_token / id_token as
@@ -76,14 +76,14 @@ class IdentityClient:
     # Localhost http:// stays silent; set True to silence the warning for a remote
     # http endpoint you genuinely intend to use.
     allow_insecure_http: bool = False
-    _discovery: Optional[Dict[str, Any]] = field(default=None, init=False, repr=False)
-    _jwks: Optional[List[Dict[str, Any]]] = field(default=None, init=False, repr=False)
+    _discovery: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _jwks: list[dict[str, Any]] | None = field(default=None, init=False, repr=False)
 
     @property
-    def _id(self) -> Dict[str, Any]:
+    def _id(self) -> dict[str, Any]:
         return _contract.identity()
 
-    def _get_json(self, url: str, bearer: Optional[str] = None) -> Any:
+    def _get_json(self, url: str, bearer: str | None = None) -> Any:
         enforce_transport_security(url, allow_insecure_http=self.allow_insecure_http)
         headers = {"authorization": "Bearer " + bearer} if bearer else {}
         status, body = self.transport("GET", url, headers, None)
@@ -91,23 +91,23 @@ class IdentityClient:
             raise IdentityError("GET %s failed: %d" % (url, status), status)
         return body
 
-    def _post(self, url: str, headers: Dict[str, str], body: str) -> Any:
+    def _post(self, url: str, headers: dict[str, str], body: str) -> Any:
         enforce_transport_security(url, allow_insecure_http=self.allow_insecure_http)
         status, parsed = self.transport("POST", url, headers, body)
         if not (200 <= status < 300):
             raise IdentityError("POST %s failed: %d" % (url, status), status)
         return parsed
 
-    def discover(self) -> Dict[str, Any]:
+    def discover(self) -> dict[str, Any]:
         if self._discovery is not None:
             return self._discovery
         doc = self._get_json(self._id["discovery"])
         if doc.get("issuer") != self._id["issuer"]:
-            raise IdentityError("issuer mismatch: %s" % doc.get("issuer"))
+            raise IdentityError("issuer mismatch: {}".format(doc.get("issuer")))
         self._discovery = doc
         return doc
 
-    def _get_jwks(self) -> List[Dict[str, Any]]:
+    def _get_jwks(self) -> list[dict[str, Any]]:
         if self._jwks is not None:
             return self._jwks
         try:
@@ -121,8 +121,8 @@ class IdentityClient:
         self._jwks = keys
         return keys
 
-    def authorize_url(self, state: str, nonce: str, pkce: Optional[Pkce] = None,
-                      scopes: Optional[List[str]] = None) -> Tuple[str, Pkce]:
+    def authorize_url(self, state: str, nonce: str, pkce: Pkce | None = None,
+                      scopes: list[str] | None = None) -> tuple[str, Pkce]:
         pk = pkce or create_pkce()
         params = {
             "client_id": self.client_id,
@@ -137,7 +137,7 @@ class IdentityClient:
         base = (self._discovery or {}).get("authorization_endpoint") or (self._id["issuer"] + "/auth")
         return base + "?" + urlencode(params), pk
 
-    def _finish_tokens(self, tok: Dict[str, Any], nonce: Optional[str] = None) -> TokenSet:
+    def _finish_tokens(self, tok: dict[str, Any], nonce: str | None = None) -> TokenSet:
         claims = verify_id_token(
             tok["id_token"], issuer=self._id["issuer"], audience=self.client_id,
             jwks=self._get_jwks(), nonce=nonce,
@@ -176,7 +176,7 @@ class IdentityClient:
         tok = self._post(disc["token_endpoint"], {"content-type": "application/x-www-form-urlencoded"}, body)
         return self._finish_tokens(tok)
 
-    def siwe_challenge(self, address: str) -> Dict[str, Any]:
+    def siwe_challenge(self, address: str) -> dict[str, Any]:
         return self._post(self._id["issuer"] + "/siwe/challenge",
                           {"content-type": "application/json"}, json.dumps({"address": address}))
 
@@ -208,7 +208,7 @@ class IdentityClient:
             raw=raw,
         )
 
-    def request_deploy_permit(self, user_id: str, init_data: str, expires_at: int, access_token: str) -> Dict[str, Any]:
+    def request_deploy_permit(self, user_id: str, init_data: str, expires_at: int, access_token: str) -> dict[str, Any]:
         """Request a factory deploy permit for the embedded wallet (authenticated).
 
         POST /aa/enroll-validator — the authority signs with its identity-signer; the SDK never

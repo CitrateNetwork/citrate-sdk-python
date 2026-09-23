@@ -39,7 +39,7 @@ def test_status_codes_map_to_typed_errors():
         c = GatewayClient(api_key="cgk_x", transport=lambda m, u, h, b, s=status: (s, {}))
         try:
             c.list_models()
-            assert False, "expected GatewayError for %d" % status
+            raise AssertionError("expected GatewayError for %d" % status)
         except GatewayError as e:
             assert needle in str(e)
             assert e.status == status

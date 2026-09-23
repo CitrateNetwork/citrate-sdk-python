@@ -2,15 +2,15 @@
 Unit tests for Citrate SDK client
 """
 
-import pytest
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-from citrate_sdk import CitrateClient, ModelConfig, ModelType, AccessType
+import pytest
+
+from citrate_sdk import AccessType, CitrateClient, ModelConfig, ModelType
 from citrate_sdk.errors import CitrateError, ModelNotFoundError
-from citrate_sdk.crypto import KeyManager
 
 
 class TestCitrateClient:
@@ -142,7 +142,7 @@ class TestCitrateClient:
             assert deployment.model_id == "model_123"
             assert deployment.tx_hash == "0xTransactionHash"
             assert deployment.ipfs_hash == "QmTestHash123"
-            assert deployment.encrypted == False
+            assert not deployment.encrypted
 
         finally:
             Path(model_path).unlink()
@@ -236,7 +236,7 @@ class TestModelConfig:
         assert config.name == ""
         assert config.model_type == ModelType.COREML
         assert config.access_type == AccessType.PUBLIC
-        assert config.encrypted == False
+        assert not config.encrypted
         assert config.access_price == 0
 
     def test_custom_config(self):
@@ -255,7 +255,7 @@ class TestModelConfig:
         assert config.model_type == ModelType.PYTORCH
         assert config.access_type == AccessType.PAID
         assert config.access_price == 1000000000000000000
-        assert config.encrypted == True
+        assert config.encrypted
         assert "ai" in config.tags
 
 

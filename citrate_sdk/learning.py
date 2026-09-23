@@ -16,14 +16,14 @@ Mirrors sdk/javascript/src/learning.ts exactly (method names in snake_case).
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .abi import AbiInterface, from_wei, keccak256_text, to_wei
-from .errors import CitrateError, ConfigurationError
+from .errors import ConfigurationError
 from .types import (
     ClassroomInfo,
-    Contributions,
     ContributionDetail,
+    Contributions,
     CycleStatus,
     LearningPool,
     PendingWithdrawal,
@@ -145,7 +145,7 @@ class _RpcMixin:
 
     # These will be set by concrete __init__ methods
     _rpc_call: Any
-    _default_account: Optional[str]
+    _default_account: str | None
     _gas_limit: int
     _gas_price: str
 
@@ -185,10 +185,10 @@ class LearningManager(_RpcMixin):
     def __init__(
         self,
         rpc_call: Any,
-        default_account: Optional[str] = None,
+        default_account: str | None = None,
         gas_limit: int = 500_000,
         gas_price: str = "0x3b9aca00",
-        contract_addresses: Optional[Dict[str, str]] = None,
+        contract_addresses: dict[str, str] | None = None,
     ) -> None:
         self._rpc_call = rpc_call
         self._default_account = default_account
@@ -223,7 +223,7 @@ class LearningManager(_RpcMixin):
 
     # --- Pool methods ---
 
-    def list_pools(self) -> List[LearningPool]:
+    def list_pools(self) -> list[LearningPool]:
         """List all available learning pools.
 
         Data source: LearningPool.nextPoolId() + getPool(uint256) via eth_call.
@@ -239,7 +239,7 @@ class LearningManager(_RpcMixin):
         if count == 0:
             return []
 
-        pools: List[LearningPool] = []
+        pools: list[LearningPool] = []
         max_pools = min(count, 100)
 
         for i in range(max_pools):
@@ -422,7 +422,7 @@ class LearningManager(_RpcMixin):
         (pending_val,) = self._contrib_iface.decode_function_result("pendingReward", pending_result)
 
         # Per-type contributions
-        per_type: List[ContributionDetail] = []
+        per_type: list[ContributionDetail] = []
         for i in range(7):
             contrib_data = self._contrib_iface.encode_function_data("getContribution", [address, i])
             contrib_result = self._eth_call(addr, contrib_data)
@@ -468,10 +468,10 @@ class StakingManager(_RpcMixin):
     def __init__(
         self,
         rpc_call: Any,
-        default_account: Optional[str] = None,
+        default_account: str | None = None,
         gas_limit: int = 500_000,
         gas_price: str = "0x3b9aca00",
-        staking_address: Optional[str] = None,
+        staking_address: str | None = None,
     ) -> None:
         self._rpc_call = rpc_call
         self._default_account = default_account
@@ -532,7 +532,7 @@ class StakingManager(_RpcMixin):
         data = self._iface.encode_function_data("claimWithdrawal", [request_id])
         return self._send_transaction(addr, data)
 
-    def get_info(self, user_address: Optional[str] = None) -> StakingInfo:
+    def get_info(self, user_address: str | None = None) -> StakingInfo:
         """Get comprehensive staking info: pool stats and user balances.
 
         Data source: LiquidStakingPool view functions via eth_call.
@@ -635,10 +635,10 @@ class ClassroomManager(_RpcMixin):
     def __init__(
         self,
         rpc_call: Any,
-        default_account: Optional[str] = None,
+        default_account: str | None = None,
         gas_limit: int = 300_000,
         gas_price: str = "0x3b9aca00",
-        classroom_address: Optional[str] = None,
+        classroom_address: str | None = None,
     ) -> None:
         self._rpc_call = rpc_call
         self._default_account = default_account
@@ -652,7 +652,7 @@ class ClassroomManager(_RpcMixin):
             raise ConfigurationError("ClassroomRegistry contract address not configured.")
         return self._classroom_address
 
-    def create(self, name: str, max_students: int, invite_code: Optional[str] = None) -> str:
+    def create(self, name: str, max_students: int, invite_code: str | None = None) -> str:
         """Create a new classroom.
 
         Data source: ClassroomRegistry.createClassroom(string, uint256, bytes32) via eth_sendTransaction.

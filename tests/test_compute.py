@@ -8,17 +8,17 @@ Verifies that each method:
   - Raises ConfigurationError when contract addresses are missing
 """
 
-import pytest
 from unittest.mock import MagicMock
 
-from citrate_sdk.abi import AbiInterface, to_wei, from_wei, keccak256
-from citrate_sdk.errors import ConfigurationError
+import pytest
+
+from citrate_sdk.abi import AbiInterface, keccak256, to_wei
 from citrate_sdk.compute import (
-    ComputeManager,
     COMPUTE_POOL_ABI,
     DISPUTE_ABI,
+    ComputeManager,
 )
-from citrate_sdk.types import ComputeJob, ComputePool, Dispute, ProviderInfo
+from citrate_sdk.errors import ConfigurationError
 
 # ---------------------------------------------------------------------------
 # Helpers

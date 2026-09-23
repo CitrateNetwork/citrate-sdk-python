@@ -26,13 +26,13 @@ from unittest.mock import patch
 
 import pytest
 
+from citrate_sdk._generated import contract
 from citrate_sdk.client import (
-    CitrateClient,
-    MODEL_DEPLOYED_EVENT_SIGNATURE,
     INFERENCE_COMPLETE_EVENT_SIGNATURE,
+    MODEL_DEPLOYED_EVENT_SIGNATURE,
+    CitrateClient,
     _event_topic,
 )
-from citrate_sdk._generated import contract
 
 _REPO = Path(__file__).resolve().parent.parent
 # valid, nonzero secp256k1 private keys for offline crypto tests
@@ -66,7 +66,7 @@ def test_extract_inference_output_matches_keccak_topic():
 def test_ascii_name_topic_is_not_what_we_match():
     """RC-8: the pre-fix literal (ascii of 'ModelDep') must NOT match a topic."""
     c = _client()
-    ascii_literal = "0x" + "ModelDeployed".encode().hex()[:16]  # 0x4d6f64656c446570
+    ascii_literal = "0x" + b"ModelDeployed".hex()[:16]  # 0x4d6f64656c446570
     assert ascii_literal == "0x4d6f64656c446570"
     # the correct keccak topic is not the ascii literal
     assert not _event_topic(MODEL_DEPLOYED_EVENT_SIGNATURE).startswith(ascii_literal)
@@ -117,7 +117,6 @@ def test_inference_sends_to_canonical_precompile():
 
 def test_cryptography_bound_admits_fixed_version():
     import tomllib
-
     from packaging.requirements import Requirement
 
     data = tomllib.loads((_REPO / "pyproject.toml").read_text())

@@ -9,7 +9,11 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from citrate_sdk.identity.jwt import IdTokenError, verify_id_token
-from citrate_sdk.identity.pkce import challenge_from_verifier, create_pkce, generate_verifier
+from citrate_sdk.identity.pkce import (
+    challenge_from_verifier,
+    create_pkce,
+    generate_verifier,
+)
 
 ISSUER = "https://auth.citrate.ai"
 AUD = "citrate-core"

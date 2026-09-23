@@ -8,28 +8,21 @@ Verifies that each method:
   - Raises ConfigurationError when contract addresses are missing
 """
 
-import pytest
 from unittest.mock import MagicMock
 
-from citrate_sdk.abi import AbiInterface, to_wei, from_wei, keccak256_text
+import pytest
+
+from citrate_sdk.abi import AbiInterface, from_wei, keccak256_text, to_wei
 from citrate_sdk.errors import ConfigurationError
 from citrate_sdk.learning import (
+    CLASSROOM_REGISTRY_ABI,
+    CONTRIBUTION_ABI,
+    LEARNING_CYCLE_ABI,
+    LEARNING_POOL_ABI,
+    LIQUID_STAKING_ABI,
+    ClassroomManager,
     LearningManager,
     StakingManager,
-    ClassroomManager,
-    LEARNING_POOL_ABI,
-    LEARNING_CYCLE_ABI,
-    CONTRIBUTION_ABI,
-    LIQUID_STAKING_ABI,
-    CLASSROOM_REGISTRY_ABI,
-)
-from citrate_sdk.types import (
-    LearningPool,
-    CycleStatus,
-    Contributions,
-    StakingInfo,
-    PendingWithdrawal,
-    ClassroomInfo,
 )
 
 # ---------------------------------------------------------------------------
@@ -258,7 +251,7 @@ class TestStakingManager:
         """preview_withdraw sends correct eth_call data."""
         rpc = MagicMock(return_value=_encode_uint256(to_wei("24")))
         mgr = self._make_manager(rpc)
-        result = mgr.preview_withdraw("25")
+        mgr.preview_withdraw("25")
         call_args = rpc.call_args_list[0]
         tx = call_args[0][1][0]
         expected = _staking_iface.encode_function_data("previewWithdraw", [to_wei("25")])
@@ -367,13 +360,13 @@ class TestClassroomManager:
 
     def test_get_student_teacher_calldata(self):
         """get_student_teacher calls getStudentTeacher on classroom contract."""
-        teacher = "0x" + "33" * 20
+        "0x" + "33" * 20
         # ABI-encode an address return: 12 zero bytes + 20 address bytes
         encoded_addr = "0x" + "00" * 12 + "33" * 20
         rpc = MagicMock(return_value=encoded_addr)
         mgr = self._make_manager(rpc)
         student = "0x" + "44" * 20
-        result = mgr.get_student_teacher(student)
+        mgr.get_student_teacher(student)
         call_args = rpc.call_args_list[0]
         assert call_args[0][0] == "eth_call"
         tx = call_args[0][1][0]

@@ -21,7 +21,7 @@ Data sources:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .abi import AbiInterface, from_wei, to_wei
 from .errors import ConfigurationError
@@ -82,10 +82,10 @@ class ComputeManager:
     def __init__(
         self,
         rpc_call: Any,
-        default_account: Optional[str] = None,
+        default_account: str | None = None,
         gas_limit: int = 500_000,
         gas_price: str = "0x3b9aca00",
-        contract_addresses: Optional[Dict[str, str]] = None,
+        contract_addresses: dict[str, str] | None = None,
     ) -> None:
         self._rpc_call = rpc_call
         self._default_account = default_account
@@ -219,7 +219,7 @@ class ComputeManager:
             bid_count=int(bid_count),
         )
 
-    def list_jobs(self, filter: Optional[str] = None) -> List[ComputeJob]:
+    def list_jobs(self, filter: str | None = None) -> list[ComputeJob]:
         """List compute jobs, optionally filtered by state.
 
         Data source: ComputePool.nextJobId() + getJob(uint256) via eth_call.
@@ -237,7 +237,7 @@ class ComputeManager:
         if count == 0:
             return []
 
-        jobs: List[ComputeJob] = []
+        jobs: list[ComputeJob] = []
         max_jobs = min(count, 100)
 
         for i in range(max_jobs):
@@ -276,7 +276,7 @@ class ComputeManager:
     # Provider Management
     # -------------------------------------------------------------------
 
-    def register_provider(self, stake: str, models: List[str], endpoint: str) -> str:
+    def register_provider(self, stake: str, models: list[str], endpoint: str) -> str:
         """Register as a compute provider.
 
         Data source: ComputePool.registerProvider() via eth_sendTransaction with msg.value.
@@ -296,7 +296,7 @@ class ComputeManager:
         value = hex(to_wei(stake))
         return self._send_transaction(addr, data, value)
 
-    def get_provider_info(self, address: Optional[str] = None) -> ProviderInfo:
+    def get_provider_info(self, address: str | None = None) -> ProviderInfo:
         """Get provider information for an address (or the default account).
 
         Data source: ComputePool.getProviderInfo(address) via eth_call.
@@ -398,7 +398,7 @@ class ComputeManager:
         data = self._compute_iface.encode_function_data("leavePool", [pool_id])
         return self._send_transaction(addr, data)
 
-    def get_pools(self) -> List[ComputePool]:
+    def get_pools(self) -> list[ComputePool]:
         """List all compute pools.
 
         Data source: ComputePool.nextPoolId() + getPool(uint256) via eth_call.
@@ -413,7 +413,7 @@ class ComputeManager:
         if count == 0:
             return []
 
-        pools: List[ComputePool] = []
+        pools: list[ComputePool] = []
         max_pools = min(count, 100)
 
         for i in range(max_pools):

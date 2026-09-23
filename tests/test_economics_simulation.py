@@ -11,42 +11,34 @@ Validates:
 - Revenue distribution sums
 """
 
-import math
 import pytest
 
+from citrate_sdk.economics.agents import (
+    Agent,
+    ComputeProviderAgent,
+    ModelCreatorAgent,
+    SchoolAgent,
+    SpeculatorAgent,
+    StakerAgent,
+    ValidatorAgent,
+)
 from citrate_sdk.economics.parameters import (
     BASE_BLOCK_REWARD,
     BLOCKS_PER_EPOCH,
-    BME_BURN_RATE,
     EPOCHS_PER_YEAR,
-    GAS_FEE_BURN_RATE,
-    HALVING_INTERVAL,
-    MAX_HALVINGS,
-    MINING_POOL_SUPPLY,
-    TAIL_EMISSION,
-    TOTAL_SUPPLY,
-    VALIDATOR_SHARE_BPS,
-    MODEL_CREATOR_SHARE_BPS,
-    INFRA_SHARE_BPS,
-    TREASURY_SHARE_BPS,
-    STAKER_SHARE_BPS,
     FACILITATOR_SHARE_BPS,
-)
-from citrate_sdk.economics.agents import (
-    Agent,
-    ValidatorAgent,
-    ModelCreatorAgent,
-    SchoolAgent,
-    StakerAgent,
-    SpeculatorAgent,
-    ComputeProviderAgent,
+    HALVING_INTERVAL,
+    INFRA_SHARE_BPS,
+    MAX_HALVINGS,
+    MODEL_CREATOR_SHARE_BPS,
+    STAKER_SHARE_BPS,
+    TAIL_EMISSION,
+    TREASURY_SHARE_BPS,
+    VALIDATOR_SHARE_BPS,
 )
 from citrate_sdk.economics.simulation import (
     EconomicSimulation,
-    SimulationResult,
-    EpochSnapshot,
 )
-
 
 # ---------------------------------------------------------------------------
 # Supply conservation invariant
@@ -339,7 +331,7 @@ class TestSensitivity:
         )
         final_revenues = [r.final.fee_revenue for r in results.values()]
         # All values should be distinct (not identical)
-        assert len(set(round(r, 2) for r in final_revenues)) > 1, (
+        assert len({round(r, 2) for r in final_revenues}) > 1, (
             "Sensitivity sweep produced identical results for all values"
         )
 
@@ -406,7 +398,6 @@ class TestAgents:
     def test_staker_stakes_on_high_apy(self):
         """Staker with high APY and rising price should increase stake."""
         s = StakerAgent(agent_id=1, balance=50_000)
-        initial_balance = s.balance
         s.update_strategy(
             epoch=1,
             apy=20.0,
