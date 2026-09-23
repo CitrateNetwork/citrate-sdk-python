@@ -20,12 +20,22 @@ jobs:
   # local mirror scripts/check-contract-drift.sh runs the identical check).
   contract-drift:
     runs-on: ubuntu-latest
+    # Internal-only gate (checks the vendored artifact against the canonical intermediate in the
+    # PRIVATE citrate-federation). Skips on public/fork CI (no token) so public CI never touches a
+    # private repo; runs authoritatively on internal pushes once CITRATE_FEDERATION_READ_TOKEN is set.
+    env:
+      FED_TOKEN: ${{ secrets.CITRATE_FEDERATION_READ_TOKEN }}
     steps:
+      - name: Skipped on public/fork CI (no federation read token)
+        if: env.FED_TOKEN == ''
+        run: echo "contract-drift is an internal supply-chain gate; skipped without CITRATE_FEDERATION_READ_TOKEN."
       - name: Checkout this repo
+        if: env.FED_TOKEN != ''
         uses: actions/checkout@v4
         with:
           path: citrate-sdk-python
       - name: Checkout canonical citrate-federation intermediate (sparse)
+        if: env.FED_TOKEN != ''
         uses: actions/checkout@v4
         with:
           repository: CitrateNetwork/citrate-federation
@@ -35,8 +45,10 @@ jobs:
           sparse-checkout: |
             contract
       - uses: actions/setup-python@v5
+        if: env.FED_TOKEN != ''
         with:
           python-version: '3.11'
       - name: Contract-artifact drift gate (blocking)
+        if: env.FED_TOKEN != ''
         run: python scripts/sync_contract.py --check
         working-directory: citrate-sdk-python
