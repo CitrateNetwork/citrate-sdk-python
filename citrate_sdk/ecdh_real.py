@@ -15,7 +15,7 @@ class ECDHManager:
     Real ECDH key exchange using secp256k1 elliptic curve
     """
 
-    def __init__(self, private_key_bytes: bytes = None):
+    def __init__(self, private_key_bytes: bytes | None = None):
         """
         Initialize ECDH manager
 

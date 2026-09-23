@@ -18,8 +18,8 @@ from collections.abc import Sequence
 from typing import Any
 
 from eth_abi import decode as abi_decode
-from eth_abi import encode as abi_encode  # type: ignore[import-untyped]
-from web3 import Web3  # type: ignore[import-untyped]
+from eth_abi import encode as abi_encode
+from web3 import Web3
 
 # ---------------------------------------------------------------------------
 # Keccak-256 helper

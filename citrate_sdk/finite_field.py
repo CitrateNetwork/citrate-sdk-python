@@ -12,13 +12,15 @@ class GF256:
     Uses irreducible polynomial x^8 + x^4 + x^3 + x + 1 (0x11b)
     """
 
-    # Precomputed tables for efficiency
-    _exp_table = None
-    _log_table = None
+    # Precomputed tables for efficiency. Populated once by
+    # ``_initialize_tables`` (guarded by ``_initialized``) before any lookup;
+    # the empty lists are placeholders that are never indexed pre-init.
+    _exp_table: list[int] = []
+    _log_table: list[int] = []
     _initialized = False
 
     @classmethod
-    def _initialize_tables(cls):
+    def _initialize_tables(cls) -> None:
         """Initialize exponential and logarithm tables"""
         if cls._initialized:
             return

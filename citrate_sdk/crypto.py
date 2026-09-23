@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from typing import Any
+from typing import Any, cast
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
@@ -47,7 +47,7 @@ class KeyManager:
     - Transaction signing
     """
 
-    def __init__(self, private_key: str = None):
+    def __init__(self, private_key: str | None = None):
         """
         Initialize key manager.
 
@@ -59,7 +59,7 @@ class KeyManager:
                 private_key = private_key[2:]
             self.account: LocalAccount = Account.from_key(private_key)
         else:
-            self.account: LocalAccount = Account.create()
+            self.account = Account.create()
 
         # Generate ECDH key pair for model encryption
         private_key_bytes = None
@@ -73,11 +73,11 @@ class KeyManager:
 
     def get_address(self) -> str:
         """Get Ethereum address"""
-        return self.account.address
+        return cast(str, self.account.address)
 
     def get_private_key(self) -> str:
         """Get private key as hex string"""
-        return self.account.key.hex()
+        return cast(str, self.account.key.hex())
 
     def get_public_key(self) -> str:
         """Get ECDH public key for sharing"""
@@ -96,7 +96,7 @@ class KeyManager:
         """
         try:
             signed_txn = self.account.sign_transaction(transaction)
-            return "0x" + signed_txn.raw_transaction.hex()
+            return "0x" + cast(str, signed_txn.raw_transaction.hex())
         except Exception as e:
             raise CitrateError(f"Transaction signing failed: {str(e)}")
 
@@ -247,7 +247,7 @@ class KeyManager:
             + recipient_public_key.encode("utf-8")
         )
 
-    def encrypt_data(self, data: str, recipient_public_key: str = None) -> str:
+    def encrypt_data(self, data: str, recipient_public_key: str | None = None) -> str:
         """Encrypt arbitrary string data, ECDH-wrapping the symmetric key to
         ``recipient_public_key`` (hex). The raw key is NEVER included in the
         returned envelope.

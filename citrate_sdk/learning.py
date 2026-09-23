@@ -16,7 +16,7 @@ Mirrors sdk/javascript/src/learning.ts exactly (method names in snake_case).
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, cast
 
 from .abi import AbiInterface, from_wei, keccak256_text, to_wei
 from .errors import ConfigurationError
@@ -152,7 +152,7 @@ class _RpcMixin:
     def _eth_call(self, to: str, data: str) -> str:
         """Execute an eth_call (read-only) and return the hex result."""
         result = self._rpc_call("eth_call", [{"to": to, "data": data}, "latest"])
-        return result
+        return cast(str, result)
 
     def _send_transaction(self, to: str, data: str, value: str = "0x0") -> str:
         """Send an eth_sendTransaction (state-changing) and return the tx hash."""
@@ -166,7 +166,7 @@ class _RpcMixin:
             "gas": hex(self._gas_limit),
             "gasPrice": self._gas_price,
         }
-        return self._rpc_call("eth_sendTransaction", [tx])
+        return cast(str, self._rpc_call("eth_sendTransaction", [tx]))
 
 
 # ============================================================================
@@ -796,4 +796,4 @@ class ClassroomManager(_RpcMixin):
         data = self._iface.encode_function_data("getStudentTeacher", [student_address])
         result = self._eth_call(addr, data)
         (teacher,) = self._iface.decode_function_result("getStudentTeacher", result)
-        return teacher
+        return cast(str, teacher)

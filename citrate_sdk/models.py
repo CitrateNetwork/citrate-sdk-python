@@ -6,6 +6,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+# The canonical, publicly-exported encryption config lives in ``crypto``; it is
+# the type actually constructed and consumed by ``KeyManager.encrypt_model``.
+# Re-export it here so ``ModelConfig.encryption_config`` is annotated with the
+# same class that is assigned to it at runtime (previously a separate, stale
+# duplicate dataclass lived here and never matched the value stored in it).
+from .crypto import EncryptionConfig
+
 
 class ModelType(Enum):
     """Supported model types"""
@@ -22,17 +29,6 @@ class AccessType(Enum):
     PRIVATE = "private"
     PAID = "paid"
     WHITELIST = "whitelist"
-
-
-@dataclass
-class EncryptionConfig:
-    """Configuration for model encryption"""
-    enabled: bool = True
-    algorithm: str = "AES-256-GCM"
-    key_derivation: str = "HKDF-SHA256"
-    access_control: bool = True
-    threshold_shares: int = 3
-    total_shares: int = 5
 
 
 @dataclass

@@ -21,7 +21,7 @@ Data sources:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from .abi import AbiInterface, from_wei, to_wei
 from .errors import ConfigurationError
@@ -117,7 +117,7 @@ class ComputeManager:
 
     def _eth_call(self, to: str, data: str) -> str:
         result = self._rpc_call("eth_call", [{"to": to, "data": data}, "latest"])
-        return result
+        return cast(str, result)
 
     def _send_transaction(self, to: str, data: str, value: str = "0x0") -> str:
         if not self._default_account:
@@ -130,7 +130,7 @@ class ComputeManager:
             "gas": hex(self._gas_limit),
             "gasPrice": self._gas_price,
         }
-        return self._rpc_call("eth_sendTransaction", [tx])
+        return cast(str, self._rpc_call("eth_sendTransaction", [tx]))
 
     # -------------------------------------------------------------------
     # Job Lifecycle

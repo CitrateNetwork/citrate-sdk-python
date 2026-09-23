@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlencode
 
 import requests
@@ -105,7 +105,7 @@ class IdentityClient:
         if doc.get("issuer") != self._id["issuer"]:
             raise IdentityError("issuer mismatch: {}".format(doc.get("issuer")))
         self._discovery = doc
-        return doc
+        return cast("dict[str, Any]", doc)
 
     def _get_jwks(self) -> list[dict[str, Any]]:
         if self._jwks is not None:
@@ -119,7 +119,7 @@ class IdentityClient:
         if not keys:
             raise IdentityError("JWKS has no keys")
         self._jwks = keys
-        return keys
+        return cast("list[dict[str, Any]]", keys)
 
     def authorize_url(self, state: str, nonce: str, pkce: Pkce | None = None,
                       scopes: list[str] | None = None) -> tuple[str, Pkce]:
@@ -177,8 +177,8 @@ class IdentityClient:
         return self._finish_tokens(tok)
 
     def siwe_challenge(self, address: str) -> dict[str, Any]:
-        return self._post(self._id["issuer"] + "/siwe/challenge",
-                          {"content-type": "application/json"}, json.dumps({"address": address}))
+        return cast("dict[str, Any]", self._post(self._id["issuer"] + "/siwe/challenge",
+                          {"content-type": "application/json"}, json.dumps({"address": address})))
 
     def siwe_verify(self, message: str, signature: str) -> TokenSet:
         tok = self._post(self._id["issuer"] + "/siwe/verify",
@@ -214,11 +214,11 @@ class IdentityClient:
         POST /aa/enroll-validator — the authority signs with its identity-signer; the SDK never
         signs. The returned permit is included in the CitrateWalletFactory.deployFor call.
         """
-        return self._post(
+        return cast("dict[str, Any]", self._post(
             self._id["issuer"] + "/aa/enroll-validator",
             {"authorization": "Bearer " + access_token, "content-type": "application/json"},
             json.dumps({"userId": user_id, "initData": init_data, "expiresAt": expires_at}),
-        )
+        ))
 
     def list_validators(self, user_id: str) -> Any:
         """GET /aa/validators — validators installed on the wallet (chain read, no auth)."""

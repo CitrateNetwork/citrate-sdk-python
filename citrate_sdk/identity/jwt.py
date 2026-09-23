@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import json
 import time
-from typing import Any
+from typing import Any, cast
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
@@ -30,7 +30,7 @@ def _b64url_int(s: str) -> int:
 
 def _decode(seg: str) -> dict[str, Any]:
     try:
-        return json.loads(_b64url_bytes(seg).decode("utf-8"))
+        return cast("dict[str, Any]", json.loads(_b64url_bytes(seg).decode("utf-8")))
     except Exception:
         raise IdTokenError("malformed token segment")
 

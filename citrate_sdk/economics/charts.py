@@ -8,7 +8,13 @@ as PNG files at 150 DPI.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 try:
     import matplotlib
@@ -54,7 +60,7 @@ def _setup_figure(
     return fig, ax
 
 
-def _add_halving_markers(ax, max_year: float) -> None:
+def _add_halving_markers(ax: Axes, max_year: float) -> None:
     """Add vertical lines at halving block heights."""
     halving_year = P.HALVING_INTERVAL * P.BLOCK_TIME_SECONDS / (365.25 * 86400)
     year = halving_year
@@ -71,7 +77,7 @@ def _add_halving_markers(ax, max_year: float) -> None:
         halving_num += 1
 
 
-def _save_and_close(fig, output_path: str) -> None:
+def _save_and_close(fig: Figure, output_path: str) -> None:
     fig.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)

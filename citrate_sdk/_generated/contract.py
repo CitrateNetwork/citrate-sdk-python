@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 _ARTIFACT = Path(__file__).with_name("federation_contract.json")
 
@@ -19,7 +19,7 @@ _ARTIFACT = Path(__file__).with_name("federation_contract.json")
 @lru_cache(maxsize=1)
 def federation_contract() -> dict[str, Any]:
     """Return the full contract artifact as a dict."""
-    return json.loads(_ARTIFACT.read_text(encoding="utf-8"))
+    return cast("dict[str, Any]", json.loads(_ARTIFACT.read_text(encoding="utf-8")))
 
 
 def chain_id() -> int:

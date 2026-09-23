@@ -6,7 +6,7 @@ Exception classes for Citrate SDK
 class CitrateError(Exception):
     """Base exception for Citrate SDK errors"""
 
-    def __init__(self, message: str, error_code: str = None, details: dict = None):
+    def __init__(self, message: str, error_code: str | None = None, details: dict | None = None):
         super().__init__(message)
         self.error_code = error_code
         self.details = details or {}

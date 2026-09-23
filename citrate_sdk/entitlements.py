@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import cast
 
 #: The five tiers the authority mints (mirrors citrate-identity TIERS).
 TIERS = ("public", "commercial", "commercial.kyc", "academic", "confidential")
@@ -117,4 +118,4 @@ def can(
 
     A thin projection of ``resolve_capabilities`` onto one capability — the same
     resolver the identity spine uses, so the two cannot diverge on expiry."""
-    return getattr(resolve_capabilities(claim, now_ms, overrides), capability)
+    return cast(bool, getattr(resolve_capabilities(claim, now_ms, overrides), capability))

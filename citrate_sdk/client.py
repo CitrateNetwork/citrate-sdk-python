@@ -7,7 +7,7 @@ import json
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -103,7 +103,7 @@ class CitrateClient:
         self._request_id += 1
         return self._request_id
 
-    def _rpc_call(self, method: str, params: list[Any] = None) -> Any:
+    def _rpc_call(self, method: str, params: list[Any] | None = None) -> Any:
         """
         Make JSON-RPC call to Citrate node.
 
@@ -250,7 +250,7 @@ class CitrateClient:
         input_data: dict[str, Any],
         encrypted: bool = False,
         max_gas: int = 1000000,
-        recipient_public_key: str = None
+        recipient_public_key: str | None = None
     ) -> InferenceResult:
         """
         Execute inference on deployed model.
@@ -349,7 +349,7 @@ class CitrateClient:
         if not result:
             raise ModelNotFoundError(f"Model not found: {model_id}")
 
-        return result
+        return cast("dict[str, Any]", result)
 
     def list_models(self, owner: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         """List deployed models.
@@ -364,7 +364,7 @@ class CitrateClient:
         params = [owner, limit] if owner else [limit]
         result = self._rpc_call("citrate_listModels", params)
         if isinstance(result, dict):
-            return result.get("models", [])
+            return cast("list[dict[str, Any]]", result.get("models", []))
         return result or []
 
     def purchase_model_access(self, model_id: str, payment_amount: int) -> str:
@@ -429,7 +429,12 @@ class CitrateClient:
         `IdentityClient.discover()` already applies to the OIDC issuer.
         """
         if self._chain_id is None:
-            raw = self.get_chain_id()
+            # ``get_chain_id`` normalizes ``eth_chainId`` to ``int`` (SPY-B-013),
+            # but keep the defensive hex-string normalization too: callers (and
+            # tests) may substitute a ``get_chain_id`` that hands back the raw
+            # ``"0x..."`` string. Typing the local as ``int | str`` keeps that
+            # branch honest rather than trusting the ``-> int`` annotation.
+            raw: int | str = self.get_chain_id()
             if isinstance(raw, str):
                 reported = int(raw, 16) if raw.startswith("0x") else int(raw)
             else:
@@ -477,7 +482,7 @@ class CitrateClient:
         signed_tx = self.key_manager.sign_transaction(tx)
 
         # Send raw transaction
-        return self._rpc_call("eth_sendRawTransaction", [signed_tx])
+        return cast(str, self._rpc_call("eth_sendRawTransaction", [signed_tx]))
 
     def _wait_for_receipt(self, tx_hash: str, timeout: int = 60) -> dict[str, Any]:
         """Wait for transaction receipt"""
@@ -487,7 +492,7 @@ class CitrateClient:
             try:
                 receipt = self._rpc_call("eth_getTransactionReceipt", [tx_hash])
                 if receipt:
-                    return receipt
+                    return cast("dict[str, Any]", receipt)
             except CitrateError:
                 pass
 
@@ -511,7 +516,7 @@ class CitrateClient:
             topics = log.get("topics", [])
             if topics and str(topics[0]).lower() == want:
                 # Extract model ID from log data
-                return log["data"][:66]  # First 32 bytes as hex
+                return cast(str, log["data"][:66])  # First 32 bytes as hex
 
         raise CitrateError(
             "Model ID not found in deployment receipt (tx {}); the transaction "
@@ -532,7 +537,7 @@ class CitrateClient:
                 # Decode output data from log
                 data_hex = log["data"]
                 data_bytes = bytes.fromhex(data_hex[2:])
-                return json.loads(data_bytes.decode())
+                return cast("dict[str, Any]", json.loads(data_bytes.decode()))
 
         raise CitrateError(
             "Inference output not found in receipt (tx {})".format(receipt.get("transactionHash", "?"))

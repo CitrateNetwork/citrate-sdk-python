@@ -221,8 +221,8 @@ class EconomicSimulation:
 
         # Price state
         self.salt_price_usd: float = self.config["initial_salt_price_usd"]
-        self.compute_demand_per_epoch: int = self.config["initial_inference_demand_per_epoch"]
-        self.tx_per_epoch: int = self.config["initial_tx_per_epoch"]
+        self.compute_demand_per_epoch: int = int(self.config["initial_inference_demand_per_epoch"])
+        self.tx_per_epoch: int = int(self.config["initial_tx_per_epoch"])
 
         # Tracking
         self._agent_id_counter: int = 0
@@ -247,6 +247,10 @@ class EconomicSimulation:
         self._pending_staker_reward: float = 0.0
         self._pending_institutional_minted: float = 0.0
 
+        # Optional sensitivity-analysis overrides (set by run_sensitivity_analysis).
+        self._override_bme_burn_rate: float | None = None
+        self._override_base_block_reward: float | None = None
+
     def _next_agent_id(self) -> int:
         self._agent_id_counter += 1
         return self._agent_id_counter
@@ -259,35 +263,35 @@ class EconomicSimulation:
         """Seed the initial agent populations and track their balances as minted."""
         cfg = self.config
 
-        for _ in range(cfg["initial_validators"]):
-            agent = ValidatorAgent(agent_id=self._next_agent_id())
-            self.validators.append(agent)
-            self.total_minted += agent.total_holdings
+        for _ in range(int(cfg["initial_validators"])):
+            validator = ValidatorAgent(agent_id=self._next_agent_id())
+            self.validators.append(validator)
+            self.total_minted += validator.total_holdings
 
-        for _ in range(cfg["initial_model_creators"]):
-            agent = ModelCreatorAgent(agent_id=self._next_agent_id())
-            self.model_creators.append(agent)
-            self.total_minted += agent.total_holdings
+        for _ in range(int(cfg["initial_model_creators"])):
+            creator = ModelCreatorAgent(agent_id=self._next_agent_id())
+            self.model_creators.append(creator)
+            self.total_minted += creator.total_holdings
 
-        for _ in range(cfg["initial_schools"]):
-            agent = SchoolAgent(agent_id=self._next_agent_id())
-            self.schools.append(agent)
-            self.total_minted += agent.total_holdings
+        for _ in range(int(cfg["initial_schools"])):
+            school = SchoolAgent(agent_id=self._next_agent_id())
+            self.schools.append(school)
+            self.total_minted += school.total_holdings
 
-        for _ in range(cfg["initial_stakers"]):
-            agent = StakerAgent(agent_id=self._next_agent_id())
-            self.stakers.append(agent)
-            self.total_minted += agent.total_holdings
+        for _ in range(int(cfg["initial_stakers"])):
+            staker = StakerAgent(agent_id=self._next_agent_id())
+            self.stakers.append(staker)
+            self.total_minted += staker.total_holdings
 
-        for _ in range(cfg["initial_speculators"]):
-            agent = SpeculatorAgent(agent_id=self._next_agent_id())
-            self.speculators.append(agent)
-            self.total_minted += agent.total_holdings
+        for _ in range(int(cfg["initial_speculators"])):
+            speculator = SpeculatorAgent(agent_id=self._next_agent_id())
+            self.speculators.append(speculator)
+            self.total_minted += speculator.total_holdings
 
-        for _ in range(cfg["initial_compute_providers"]):
-            agent = ComputeProviderAgent(agent_id=self._next_agent_id())
-            self.compute_providers.append(agent)
-            self.total_minted += agent.total_holdings
+        for _ in range(int(cfg["initial_compute_providers"])):
+            provider = ComputeProviderAgent(agent_id=self._next_agent_id())
+            self.compute_providers.append(provider)
+            self.total_minted += provider.total_holdings
 
         self._refresh_caches()
 
@@ -363,46 +367,46 @@ class EconomicSimulation:
         # Validators
         new_v = int(cfg["validator_growth_per_year"] * monthly_factor + 0.5)
         for _ in range(new_v):
-            agent = ValidatorAgent(agent_id=self._next_agent_id())
-            self.validators.append(agent)
-            self.total_minted += agent.total_holdings
+            validator = ValidatorAgent(agent_id=self._next_agent_id())
+            self.validators.append(validator)
+            self.total_minted += validator.total_holdings
 
         # Schools (linear growth)
         new_s = int(cfg["school_growth_per_year"] * monthly_factor + 0.5)
         for _ in range(new_s):
-            agent = SchoolAgent(agent_id=self._next_agent_id())
-            self.schools.append(agent)
-            self.total_minted += agent.total_holdings
+            school = SchoolAgent(agent_id=self._next_agent_id())
+            self.schools.append(school)
+            self.total_minted += school.total_holdings
 
         # Model creators
         new_mc = int(cfg["model_creator_growth_per_year"] * monthly_factor + 0.5)
         for _ in range(new_mc):
-            agent = ModelCreatorAgent(agent_id=self._next_agent_id())
-            self.model_creators.append(agent)
-            self.total_minted += agent.total_holdings
+            creator = ModelCreatorAgent(agent_id=self._next_agent_id())
+            self.model_creators.append(creator)
+            self.total_minted += creator.total_holdings
 
         # Stakers
         new_st = int(cfg["staker_growth_per_year"] * monthly_factor + 0.5)
         for _ in range(new_st):
-            agent = StakerAgent(agent_id=self._next_agent_id())
-            self.stakers.append(agent)
-            self.total_minted += agent.total_holdings
+            staker = StakerAgent(agent_id=self._next_agent_id())
+            self.stakers.append(staker)
+            self.total_minted += staker.total_holdings
 
         # Speculators
         new_sp = int(cfg["speculator_growth_per_year"] * monthly_factor + 0.5)
         for _ in range(new_sp):
-            agent = SpeculatorAgent(agent_id=self._next_agent_id())
-            self.speculators.append(agent)
-            self.total_minted += agent.total_holdings
+            speculator = SpeculatorAgent(agent_id=self._next_agent_id())
+            self.speculators.append(speculator)
+            self.total_minted += speculator.total_holdings
 
         # Compute providers (demand-driven)
         utilization = self._compute_utilization()
         if utilization > 0.6:
             new_cp = int(cfg["compute_provider_growth_per_year"] * monthly_factor + 0.5)
             for _ in range(new_cp):
-                agent = ComputeProviderAgent(agent_id=self._next_agent_id())
-                self.compute_providers.append(agent)
-                self.total_minted += agent.total_holdings
+                provider = ComputeProviderAgent(agent_id=self._next_agent_id())
+                self.compute_providers.append(provider)
+                self.total_minted += provider.total_holdings
 
     # ------------------------------------------------------------------
     # Block reward calculation
@@ -420,7 +424,7 @@ class EconomicSimulation:
         if halvings >= P.MAX_HALVINGS:
             return P.TAIL_EMISSION
 
-        reward = P.BASE_BLOCK_REWARD / (2 ** halvings)
+        reward = P.BASE_BLOCK_REWARD / (2.0 ** halvings)
 
         # Never go below tail emission
         if reward < P.TAIL_EMISSION:
@@ -586,14 +590,14 @@ class EconomicSimulation:
 
         # Schools: institutional rewards (models + adapters)
         epochs_per_month = P.EPOCHS_PER_YEAR / 12
-        for s in self.schools:
-            if s.active:
-                model_reward = s.models_hosted * P.INSTITUTIONAL_MODEL_HOSTING / epochs_per_month
-                adapter_reward = s.adapters_created * P.INSTITUTIONAL_ADAPTER_REWARD / epochs_per_month
+        for school in self.schools:
+            if school.active:
+                model_reward = school.models_hosted * P.INSTITUTIONAL_MODEL_HOSTING / epochs_per_month
+                adapter_reward = school.adapters_created * P.INSTITUTIONAL_ADAPTER_REWARD / epochs_per_month
                 inst = (model_reward + adapter_reward) * self.AGENT_UPDATE_INTERVAL
                 # Base reward was already accumulated in _accumulate_rewards
                 base_share = self._pending_institutional_minted / max(1, self._cached_active_counts.get("school", 1))
-                s.receive_reward(base_share + inst)
+                school.receive_reward(base_share + inst)
                 self.total_minted += inst
         self._pending_institutional_minted = 0.0
 
@@ -678,7 +682,7 @@ class EconomicSimulation:
     def _calculate_floor_price(self) -> float:
         """SALT floor price = compute_cost_usd / salt_per_pflop_hour."""
         years_elapsed = self.current_epoch / P.EPOCHS_PER_YEAR
-        compute_cost_usd = 2.50 * (0.80 ** years_elapsed)
+        compute_cost_usd = 2.50 * math.pow(0.80, years_elapsed)
 
         base_salt_per_pfhr = 100.0
         active_providers = self._cached_active_counts.get("compute_provider", 1)
@@ -737,12 +741,12 @@ class EconomicSimulation:
             v.update_strategy(epoch, apy, price, demand, utilization)
         for c in self.model_creators:
             c.update_strategy(epoch, apy, price, demand, utilization)
-        for s in self.schools:
-            s.update_strategy(epoch, apy, price, demand, utilization)
-        for s in self.stakers:
-            s.update_strategy(epoch, apy, price, demand, utilization)
-        for s in self.speculators:
-            s.update_strategy(epoch, apy, price, demand, utilization)
+        for school in self.schools:
+            school.update_strategy(epoch, apy, price, demand, utilization)
+        for staker in self.stakers:
+            staker.update_strategy(epoch, apy, price, demand, utilization)
+        for speculator in self.speculators:
+            speculator.update_strategy(epoch, apy, price, demand, utilization)
         for p in self.compute_providers:
             p.update_strategy(epoch, apy, price, demand, utilization)
 

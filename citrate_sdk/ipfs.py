@@ -3,7 +3,7 @@ Real IPFS integration for Citrate Python SDK
 """
 
 import json
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -70,7 +70,7 @@ class IPFSClient:
                 raise IPFSError(f"IPFS upload failed: HTTP {response.status_code}")
 
             result = response.json()
-            ipfs_hash = result['Hash']
+            ipfs_hash = cast(str, result['Hash'])
 
             # Verify the upload by getting file info
             self._verify_upload(ipfs_hash)
@@ -132,7 +132,7 @@ class IPFSClient:
             if response.status_code != 200:
                 raise IPFSError(f"IPFS stat failed: HTTP {response.status_code}")
 
-            return response.json()
+            return cast("dict[str, Any]", response.json())
 
         except requests.exceptions.RequestException as e:
             raise IPFSError(f"IPFS connection error: {str(e)}")
@@ -193,7 +193,7 @@ class IPFSClient:
 
             if response.status_code == 200:
                 result = response.json()
-                return result.get('Version')
+                return cast("str | None", result.get('Version'))
 
         except (requests.exceptions.RequestException, json.JSONDecodeError):
             pass
@@ -248,7 +248,7 @@ class IPFSManager:
             IPFSClient(url, allow_insecure_http=allow_insecure_http, timeout=timeout)
             for url in (fallback_urls or [])
         ]
-        self.active_client = None
+        self.active_client: IPFSClient | None = None
 
     def upload(self, data: bytes) -> str:
         """
