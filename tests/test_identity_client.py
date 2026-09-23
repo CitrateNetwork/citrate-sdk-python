@@ -108,14 +108,14 @@ def test_exchange_code_rejects_nonce_mismatch():
 
 
 def test_userinfo_commercial_kyc_caps():
-    body = {"sub": "user-1", "wallet_address": "0x1615Af127952c4e4987D7b597bDD7cb8B49aFB89",
+    body = {"sub": "user-1", "wallet_address": "0xfb43484CDbA25C6457C2775C1d6dfeD71cE4e720",
             ID["entitlementClaim"]: {"tier": "commercial.kyc"}}
     c = IdentityClient(client_id=CLIENT_ID, redirect_uri="x", transport=_make_transport(body))
     info = c.user_info("at-1")
     assert info.tier == "commercial.kyc"
     assert info.capabilities.ecosystem_tx is True
     assert info.capabilities.confidential_docs is False
-    assert info.wallet_address == "0x1615Af127952c4e4987D7b597bDD7cb8B49aFB89"
+    assert info.wallet_address == "0xfb43484CDbA25C6457C2775C1d6dfeD71cE4e720"
 
 
 def test_userinfo_role_does_not_grant_all_caps():

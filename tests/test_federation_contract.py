@@ -10,17 +10,17 @@ def test_chain_id_is_40204():
     assert contract.ws_url() == "wss://rpc.citrate.ai/ws"
 
 
-def test_aa_stack_pins_the_live_07_23_addresses():
+def test_aa_stack_pins_the_live_addresses():
     aa = contract.aa_stack()
-    assert aa["EntryPoint"].lower() == "0xc698feaf0ff7fdb0d60e2f620c97cb729a694975"
-    assert aa["CitrateWalletFactory"].lower() == "0xc9c7b3d3fe28012ab5f2583a4f58531e9f26d3f5"
-    assert aa["CitratePaymaster"].lower() == "0x0cd122ace90084afb26d5101074af15aaccc1c0e"
+    assert aa["EntryPoint"].lower() == "0x97d5391a647429233e202f99231743c53a648f3c"
+    assert aa["CitrateWalletFactory"].lower() == "0x86486d1de9f256e2cba327c46ac11120df0aa51a"
+    assert aa["CitratePaymaster"].lower() == "0xfdc9f7a72163b5d45becdb8a9d8d44b970f77318"
 
 
 def test_membership_addresses_present():
     m = contract.membership()
-    assert m["CitrateMemberSBT"] == "0x4CE39F891c0A519Fa0E0De97A1DD3e3f856e0cF1"
-    assert m["MembershipStakeVault"] == "0x61E324cFd6B7Cb106AC0AD1dF163bdFef2b74268"
+    assert m["CitrateMemberSBT"].lower() == "0xf0badd9eed5a81871a2f0d309b1f0a225646448a"
+    assert m["MembershipStakeVault"].lower() == "0x53fb4badffaceedd575d47d0e74bb721504f786e"
 
 
 def test_entitlement_vocabulary():

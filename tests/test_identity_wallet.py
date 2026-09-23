@@ -19,7 +19,7 @@ def _raises(exc, fn):
 
 
 def test_predict_matches_onchain_and_js():
-    assert wallet.predict_wallet_address(USER_ID_4242) == "0x1615Af127952c4e4987D7b597bDD7cb8B49aFB89"
+    assert wallet.predict_wallet_address(USER_ID_4242) == "0xfb43484CDbA25C6457C2775C1d6dfeD71cE4e720"
 
 
 def test_predict_uses_artifact_factory_and_impl_by_default():

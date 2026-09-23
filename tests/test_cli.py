@@ -23,7 +23,7 @@ def test_entry_point_resolves_and_help_returns():
 def test_wallet_predict_matches_onchain_vector():
     rc, out = _run(["wallet", "predict", "--user-id", "0x" + "42" * 32])
     assert rc == 0
-    assert "0x1615Af127952c4e4987D7b597bDD7cb8B49aFB89" in out
+    assert "0xfb43484CDbA25C6457C2775C1d6dfeD71cE4e720" in out
 
 
 def test_entitlement_capabilities():
