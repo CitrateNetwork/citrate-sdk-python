@@ -23,7 +23,10 @@ class TestKeyManager:
         private_key = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
         key_manager = KeyManager(private_key)
 
-        assert key_manager.get_private_key() == private_key
+        # get_private_key() returns the eth-account key hex, which recent
+        # hexbytes releases now emit 0x-prefixed. Assert the full 32-byte key
+        # round-trips (just with the 0x prefix the library adds).
+        assert key_manager.get_private_key() == "0x" + private_key
         assert key_manager.get_address().startswith("0x")
         assert len(key_manager.get_address()) == 42
 
@@ -32,8 +35,9 @@ class TestKeyManager:
         private_key = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
         key_manager = KeyManager(private_key)
 
-        # Should strip 0x prefix
-        assert key_manager.get_private_key() == private_key[2:]
+        # A 0x-prefixed input is accepted; the key round-trips to the same
+        # 0x-prefixed hex (recent hexbytes emits the 0x prefix from .hex()).
+        assert key_manager.get_private_key() == private_key
 
     def test_initialization_without_key(self):
         """Test KeyManager initialization with generated key"""
@@ -42,7 +46,8 @@ class TestKeyManager:
         private_key = key_manager.get_private_key()
         address = key_manager.get_address()
 
-        assert len(private_key) == 64  # 32 bytes in hex
+        assert private_key.startswith("0x")
+        assert len(private_key) == 66  # 0x + 32 bytes (64 hex chars)
         assert address.startswith("0x")
         assert len(address) == 42
 

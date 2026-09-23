@@ -26,8 +26,16 @@ from web3 import Web3
 # ---------------------------------------------------------------------------
 
 def keccak256(data: bytes) -> bytes:
-    """Return the Keccak-256 hash of *data*."""
-    return Web3.keccak(data)
+    """Return the Keccak-256 hash of *data* as plain ``bytes``.
+
+    ``Web3.keccak`` returns a ``HexBytes``, and recent ``hexbytes`` releases
+    made ``HexBytes.hex()`` emit a ``0x`` prefix. Callers here build calldata
+    as ``"0x" + keccak256(...).hex()`` (selectors) and ``"0x" + ...`` in
+    ``keccak256_text``, so a prefixed ``.hex()`` would corrupt the output into
+    ``0x0x...``. Coercing to plain ``bytes`` keeps ``.hex()`` un-prefixed
+    regardless of the installed ``hexbytes`` version.
+    """
+    return bytes(Web3.keccak(data))
 
 
 def keccak256_text(text: str) -> str:

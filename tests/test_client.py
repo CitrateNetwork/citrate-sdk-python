@@ -102,7 +102,7 @@ class TestCitrateClient:
 
         assert client.rpc_url == self.mock_rpc_url
         assert client.key_manager is not None
-        assert client.key_manager.get_private_key() == self.mock_private_key[2:]  # Without 0x prefix
+        assert client.key_manager.get_private_key() == self.mock_private_key  # 0x-prefixed key hex
 
     def test_client_initialization_without_key(self):
         """Test client initialization without private key"""

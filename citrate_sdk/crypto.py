@@ -96,7 +96,17 @@ class KeyManager:
         """
         try:
             signed_txn = self.account.sign_transaction(transaction)
-            return "0x" + cast(str, signed_txn.raw_transaction.hex())
+            # eth-account renamed this attribute from ``rawTransaction`` to
+            # ``raw_transaction`` (0.13+); support both installed versions.
+            # Recent hexbytes also makes ``.hex()`` 0x-prefixed, so normalise
+            # before re-prefixing to avoid a ``0x0x...`` result.
+            raw = getattr(signed_txn, "raw_transaction", None)
+            if raw is None:
+                raw = getattr(signed_txn, "rawTransaction")
+            raw_hex = cast(str, raw.hex())
+            if raw_hex.startswith("0x"):
+                raw_hex = raw_hex[2:]
+            return "0x" + raw_hex
         except Exception as e:
             raise CitrateError(f"Transaction signing failed: {str(e)}")
 
