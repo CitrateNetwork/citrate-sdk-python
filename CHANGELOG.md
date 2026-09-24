@@ -8,8 +8,7 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
 **0.6.0 is YANKED.** It shipped with seven SECREM-02 K3 security tripwires
 failing. They were committed red-first (`ac3bfc1`, marked `wip`) and the
 implementation never followed; the release went out 33 days later. Details and
-proof-of-concept in
-`citrate-security/audits/2026-08-02-sdk-python-k3-addendum/`.
+proof-of-concept are held in an internal security audit.
 
 ### Security
 
