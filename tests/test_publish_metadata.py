@@ -114,3 +114,10 @@ def test_package_version_matches_pyproject(project: dict) -> None:
         f"declares {project['version']!r}. A bump that touches only one of these "
         f"ships a package that misreports itself at runtime."
     )
+
+
+def test_issue_and_changelog_links_use_the_public_repo(project: dict) -> None:
+    """citrate-sdk-python is public (2026-09-24), so readers can reach issues and
+    the changelog on the canonical repo instead of a generic docs page."""
+    assert project["urls"]["Bug Tracker"] == f"{CANONICAL_REPO}/issues"
+    assert project["urls"]["Changelog"] == f"{CANONICAL_REPO}/blob/main/CHANGELOG.md"
