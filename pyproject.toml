@@ -86,19 +86,16 @@ docs = [
     "sphinx-autodoc-typehints>=1.20",
 ]
 
-# 2026-08-01: the PUBLISHED 0.6.0 points Repository/Bug Tracker/Changelog at
-# github.com/SaulBuilds/citrate — a PRIVATE repo on a PERSONAL account, and the
-# pre-split monorepo besides. Every one of those links 404s for the public, and a
-# company package naming an individual's account as its home is a provenance
-# problem on top of a broken one. The federation repo is CitrateNetwork/
-# citrate-sdk-python; it is private too, so the reader-facing links go to surfaces
-# that actually answer (docs.citrate.ai returns 200) rather than to a login wall.
+# 2026-08-01: the PUBLISHED 0.6.0 points Repository/Bug Tracker/Changelog at the
+# private pre-split monorepo on a personal account (SaulBuilds/citrate), so every
+# link 404s for the public. 0.6.1 names the canonical federation repo. The repo
+# went public (2026-09-24), so issues and the changelog link there directly.
 [project.urls]
 Homepage = "https://citrate.ai"
 Documentation = "https://docs.citrate.ai"
 Repository = "https://github.com/CitrateNetwork/citrate-sdk-python"
-"Bug Tracker" = "https://docs.citrate.ai"
-Changelog = "https://docs.citrate.ai"
+"Bug Tracker" = "https://github.com/CitrateNetwork/citrate-sdk-python/issues"
+Changelog = "https://github.com/CitrateNetwork/citrate-sdk-python/blob/main/CHANGELOG.md"
 
 [project.scripts]
 citrate = "citrate_sdk.cli:main"
