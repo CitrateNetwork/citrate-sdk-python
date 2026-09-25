@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from ._chain_guard import expected_chain_id, pinned_send
 from .abi import AbiInterface, enum_index, from_wei, to_wei
 from .errors import ConfigurationError
 from .types import ComputeJob, ComputePool, Dispute, ProviderInfo
@@ -86,8 +87,13 @@ class ComputeManager:
         gas_limit: int = 500_000,
         gas_price: str = "0x3b9aca00",
         contract_addresses: dict[str, str] | None = None,
+        *,
+        chain_id: int | None = None,
     ) -> None:
         self._rpc_call = rpc_call
+        # PBA-L6b-042: writes assert eth_chainId against this before sending.
+        self._expected_chain_id = expected_chain_id(chain_id)
+        self._chain_verified = False
         self._default_account = default_account
         self._gas_limit = gas_limit
         self._gas_price = gas_price
@@ -130,7 +136,7 @@ class ComputeManager:
             "gas": hex(self._gas_limit),
             "gasPrice": self._gas_price,
         }
-        return cast(str, self._rpc_call("eth_sendTransaction", [tx]))
+        return pinned_send(self, tx)
 
     # -------------------------------------------------------------------
     # Job Lifecycle

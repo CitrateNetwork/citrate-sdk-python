@@ -19,6 +19,7 @@ from citrate_sdk.compute import (
     ComputeManager,
 )
 from citrate_sdk.errors import ConfigurationError
+from tests._chain_rpc import chain_rpc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -67,11 +68,11 @@ class TestComputeManager:
 
     def test_post_job_calldata(self):
         """post_job sends correct calldata, value, and contract address."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         model_hash = "0x" + "ab" * 32
         mgr.post_job(model_hash, "hello world", "1.5", "ZK")
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         assert tx["to"] == FAKE_COMPUTE_ADDR
         assert int(tx["value"], 16) == to_wei("1.5")
         # Verify function selector
@@ -80,10 +81,10 @@ class TestComputeManager:
 
     def test_bid_on_job_calldata(self):
         """bid_on_job sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.bid_on_job(job_id=3, price="0.5", latency=30)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _compute_iface.encode_function_data("bidOnJob", [
             3, to_wei("0.5"), 30,
         ])
@@ -91,10 +92,10 @@ class TestComputeManager:
 
     def test_submit_result_calldata(self):
         """submit_result encodes output and proof as bytes."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.submit_result(job_id=7, output="result data", proof="proof data")
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _compute_iface.encode_function_data("submitResult", [
             7, b"result data", b"proof data",
         ])
@@ -102,14 +103,14 @@ class TestComputeManager:
 
     def test_register_provider_calldata(self):
         """register_provider sends correct calldata and stake as value."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.register_provider(
             stake="100",
             models=["model-a", "model-b"],
             endpoint="https://my-gpu.example.com",
         )
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _compute_iface.encode_function_data("registerProvider", [
             ["model-a", "model-b"], "https://my-gpu.example.com",
         ])
@@ -118,19 +119,19 @@ class TestComputeManager:
 
     def test_heartbeat_calldata(self):
         """heartbeat sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.heartbeat()
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _compute_iface.encode_function_data("heartbeat")
         assert tx["data"] == expected
 
     def test_create_pool_calldata(self):
         """create_pool encodes mode enum and price correctly."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.create_pool("GPU Cluster", "DataParallel", 5, 1000, "2.5")
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _compute_iface.encode_function_data("createPool", [
             "GPU Cluster", 1, 5, 1000, to_wei("2.5"),
         ])
@@ -138,28 +139,28 @@ class TestComputeManager:
 
     def test_join_pool_calldata(self):
         """join_pool sends correct poolId and gpuCount."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.join_pool(pool_id=2, gpu_count=4)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _compute_iface.encode_function_data("joinPool", [2, 4])
         assert tx["data"] == expected
 
     def test_leave_pool_calldata(self):
         """leave_pool sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.leave_pool(pool_id=9)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _compute_iface.encode_function_data("leavePool", [9])
         assert tx["data"] == expected
 
     def test_dispute_result_calldata(self):
         """dispute_result sends to dispute contract with bond as value."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.dispute_result(job_id=5, bond="3")
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _dispute_iface.encode_function_data("disputeResult", [5])
         assert tx["data"] == expected
         assert tx["to"] == FAKE_DISPUTE_ADDR

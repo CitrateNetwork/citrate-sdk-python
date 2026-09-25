@@ -24,6 +24,7 @@ from citrate_sdk.learning import (
     LearningManager,
     StakingManager,
 )
+from tests._chain_rpc import chain_rpc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -97,17 +98,17 @@ class TestLearningManager:
         pools = mgr.list_pools()
         assert pools == []
         # Verify we called eth_call with correct target
-        call_args = rpc.call_args_list[0]
+        call_args = rpc.call_args_list[-1]
         assert call_args[0][0] == "eth_call"
         assert call_args[0][1][0]["to"] == FAKE_POOL_ADDR
 
     def test_join_pool_calldata(self):
         """join_pool sends correct calldata and value."""
-        rpc = MagicMock(return_value="0xfake_tx_hash")
+        rpc = chain_rpc("0xfake_tx_hash")
         mgr = self._make_manager(rpc)
         result = mgr.join_pool(pool_id=5, stake_amount="10")
         assert result == "0xfake_tx_hash"
-        call_args = rpc.call_args_list[0]
+        call_args = rpc.call_args_list[-1]
         assert call_args[0][0] == "eth_sendTransaction"
         tx = call_args[0][1][0]
         assert tx["to"] == FAKE_POOL_ADDR
@@ -117,19 +118,19 @@ class TestLearningManager:
 
     def test_leave_pool_calldata(self):
         """leave_pool sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.leave_pool(pool_id=3)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _pool_iface.encode_function_data("leavePool", [3])
         assert tx["data"] == expected
 
     def test_create_pool_calldata(self):
         """create_pool sends correct ABI-encoded data with access enum."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.create_pool("My Pool", "A test pool", "InviteOnly", "5")
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _pool_iface.encode_function_data("createPool", [
             "My Pool", "A test pool", 1, to_wei("5"),
         ])
@@ -138,29 +139,29 @@ class TestLearningManager:
 
     def test_register_for_cycle_calldata(self):
         """register_for_cycle sends correct calldata to cycle contract."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.register_for_cycle(cycle_id=7)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _cycle_iface.encode_function_data("registerParticipant", [7])
         assert tx["data"] == expected
         assert tx["to"] == FAKE_CYCLE_ADDR
 
     def test_claim_cycle_reward_calldata(self):
         """claim_cycle_reward sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.claim_cycle_reward(cycle_id=2)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _cycle_iface.encode_function_data("claimCycleReward", [2])
         assert tx["data"] == expected
 
     def test_claim_contribution_rewards_calldata(self):
         """claim_contribution_rewards sends correct calldata to contrib contract."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.claim_contribution_rewards()
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _contrib_iface.encode_function_data("claimRewards")
         assert tx["data"] == expected
         assert tx["to"] == FAKE_CONTRIB_ADDR
@@ -207,10 +208,10 @@ class TestStakingManager:
 
     def test_deposit_calldata(self):
         """deposit sends correct calldata and value."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.deposit("50")
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _staking_iface.encode_function_data("deposit")
         assert tx["data"] == expected
         assert int(tx["value"], 16) == to_wei("50")
@@ -218,19 +219,19 @@ class TestStakingManager:
 
     def test_withdraw_calldata(self):
         """withdraw encodes requestWithdrawal with share amount."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.withdraw("25")
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _staking_iface.encode_function_data("requestWithdrawal", [to_wei("25")])
         assert tx["data"] == expected
 
     def test_claim_withdrawal_calldata(self):
         """claim_withdrawal sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.claim_withdrawal(request_id=42)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _staking_iface.encode_function_data("claimWithdrawal", [42])
         assert tx["data"] == expected
 
@@ -239,7 +240,7 @@ class TestStakingManager:
         rpc = MagicMock(return_value=_encode_uint256(to_wei("49")))
         mgr = self._make_manager(rpc)
         result = mgr.preview_deposit("50")
-        call_args = rpc.call_args_list[0]
+        call_args = rpc.call_args_list[-1]
         assert call_args[0][0] == "eth_call"
         tx = call_args[0][1][0]
         expected = _staking_iface.encode_function_data("previewDeposit", [to_wei("50")])
@@ -252,7 +253,7 @@ class TestStakingManager:
         rpc = MagicMock(return_value=_encode_uint256(to_wei("24")))
         mgr = self._make_manager(rpc)
         mgr.preview_withdraw("25")
-        call_args = rpc.call_args_list[0]
+        call_args = rpc.call_args_list[-1]
         tx = call_args[0][1][0]
         expected = _staking_iface.encode_function_data("previewWithdraw", [to_wei("25")])
         assert tx["data"] == expected
@@ -291,10 +292,10 @@ class TestClassroomManager:
     def test_enroll_calldata(self):
         """enroll sends the raw invite code; the contract hashes it (CHAIN-B-C009,
         PBA-L6b-040 — this test used to pin the removed bytes32-hash ABI)."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.enroll("secret-code-123")
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _classroom_iface.encode_function_data(
             "enrollWithCode", [b"secret-code-123"]
         )
@@ -303,20 +304,20 @@ class TestClassroomManager:
 
     def test_unenroll_calldata(self):
         """unenroll sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.unenroll()
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _classroom_iface.encode_function_data("unenroll")
         assert tx["data"] == expected
 
     def test_deploy_model_calldata(self):
         """deploy_model sends whitelistModel with correct bytes32."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         model_hash = "0x" + "ab" * 32
         mgr.deploy_model(model_hash)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _classroom_iface.encode_function_data(
             "whitelistModel", [bytes.fromhex("ab" * 32)]
         )
@@ -324,11 +325,11 @@ class TestClassroomManager:
 
     def test_remove_model_calldata(self):
         """remove_model sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         model_hash = "cd" * 32  # no 0x prefix
         mgr.remove_model(model_hash)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _classroom_iface.encode_function_data(
             "removeModel", [bytes.fromhex("cd" * 32)]
         )
@@ -336,10 +337,10 @@ class TestClassroomManager:
 
     def test_rotate_invite_code_calldata(self):
         """rotate_invite_code hashes new code and sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.rotate_invite_code("new-secret")
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected_hash = keccak256_text("new-secret")
         expected = _classroom_iface.encode_function_data(
             "rotateInviteCode", [bytes.fromhex(expected_hash[2:])]
@@ -354,7 +355,7 @@ class TestClassroomManager:
         model = "0x" + "ff" * 32
         result = mgr.can_student_access_model(student, model)
         assert result is True
-        call_args = rpc.call_args_list[0]
+        call_args = rpc.call_args_list[-1]
         assert call_args[0][0] == "eth_call"
         assert call_args[0][1][0]["to"] == FAKE_CLASSROOM_ADDR
 
@@ -367,7 +368,7 @@ class TestClassroomManager:
         mgr = self._make_manager(rpc)
         student = "0x" + "44" * 20
         mgr.get_student_teacher(student)
-        call_args = rpc.call_args_list[0]
+        call_args = rpc.call_args_list[-1]
         assert call_args[0][0] == "eth_call"
         tx = call_args[0][1][0]
         expected = _classroom_iface.encode_function_data("getStudentTeacher", [student])

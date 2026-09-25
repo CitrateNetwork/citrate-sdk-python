@@ -20,6 +20,7 @@ from citrate_sdk.treasury import (
     STABLECOIN_TREASURY_ABI,
     TreasuryManager,
 )
+from tests._chain_rpc import chain_rpc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -112,10 +113,10 @@ class TestTreasuryManager:
 
     def test_deposit_stablecoin_calldata(self):
         """deposit_stablecoin sends correct calldata to treasury."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.deposit_stablecoin(FAKE_STABLECOIN, 100_000_000)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         assert tx["to"] == FAKE_TREASURY_ADDR
         expected = _treasury_iface.encode_function_data("deposit", [FAKE_STABLECOIN, 100_000_000])
         assert tx["data"] == expected
@@ -131,10 +132,10 @@ class TestTreasuryManager:
 
     def test_purchase_compute_credits_calldata(self):
         """purchase_compute_credits sends correct calldata to gateway."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.purchase_compute_credits(FAKE_STABLECOIN, 50_000_000)
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         assert tx["to"] == FAKE_GATEWAY_ADDR
         expected = _gateway_iface.encode_function_data("purchaseComputeCredits", [
             FAKE_STABLECOIN, 50_000_000,
@@ -163,7 +164,7 @@ class TestTreasuryManager:
         rpc = MagicMock(return_value=_encode_uint256(100))
         mgr = self._make_manager(rpc)
         mgr.get_credit_balance()  # no address parameter
-        call_args = rpc.call_args_list[0][0]
+        call_args = rpc.call_args_list[-1][0]
         # Verify the call went to the correct contract
         assert call_args[1][0]["to"] == FAKE_GATEWAY_ADDR
 
@@ -189,7 +190,7 @@ class TestTreasuryManager:
         rpc = MagicMock(return_value=_encode_uint256(100))
         mgr = self._make_manager(rpc)
         mgr.estimate_calls_remaining(DEFAULT_ACCOUNT)
-        call_args = rpc.call_args_list[0][0]
+        call_args = rpc.call_args_list[-1][0]
         expected = _gateway_iface.encode_function_data("estimateCallsRemaining", [
             DEFAULT_ACCOUNT, 1000,
         ])
