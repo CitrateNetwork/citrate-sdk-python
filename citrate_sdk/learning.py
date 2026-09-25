@@ -107,17 +107,27 @@ _ENROLL_TAG = keccak(b"CitrateClassroomRegistry.Enroll.v1")
 _ZERO_ADDRESS = "0x" + "00" * 20
 
 
+#: secp256k1 group order; a private key must be in [1, n).
+_SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+
 def _invite_account(invite_secret: str) -> LocalAccount:
-    """Parse an invite secret (a 32-byte secp256k1 key as 0x-hex)."""
+    """Parse an invite secret (a 32-byte secp256k1 key as 0x-hex).
+
+    The range is checked here rather than left to the installed eth-keys
+    version, and any parse failure is reported as ValueError.
+    """
     if not isinstance(invite_secret, str) or not re.fullmatch(r"0x[0-9a-fA-F]{64}", invite_secret):
         raise ValueError(
             "invite secret must be a 0x-prefixed 32-byte key (the classroom invite is a key pair; "
             "use the value ClassroomManager.create / rotate_invite_code returned)"
         )
+    if not 1 <= int(invite_secret, 16) < _SECP256K1_N:
+        raise ValueError("invite secret is out of range for a secp256k1 key")
     try:
         return cast(LocalAccount, Account.from_key(invite_secret))
-    except (ValueError, TypeError):
-        raise ValueError("invite secret is not a valid secp256k1 key")
+    except Exception as e:  # eth-keys raises different types across versions
+        raise ValueError(f"invite secret is not a valid secp256k1 key: {e}") from None
 
 
 def _invite_commitment(invite_key: str) -> bytes:
