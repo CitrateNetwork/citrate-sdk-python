@@ -6,12 +6,15 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 from typing import Any, cast
 
 import requests
 
 from ._url_security import enforce_transport_security
 from .errors import IPFSError
+
+_log = logging.getLogger(__name__)
 
 #: PBA-L6b-030: default ceiling on a single download (bytes). Pass
 #: ``max_bytes`` to raise or lower it per call.
@@ -124,6 +127,7 @@ class IPFSClient:
         *,
         expected_sha256: str | None = None,
         max_bytes: int | None = None,
+        verify: bool = True,
     ) -> bytes:
         """
         Download bytes from IPFS using hash
@@ -139,10 +143,18 @@ class IPFSClient:
         - self-describing addresses are verified with no hint: ``sha256:<hex>``
           pointers and CIDv1 raw/sha2-256 (``bafkrei...``).
 
+        Verification is MANDATORY (PBA-L6b-030 follow-up): if the address
+        cannot verify itself and no ``expected_sha256`` is given, the download
+        is refused before any request. ``verify=False`` is the explicit opt-out
+        for callers who accept unverified bytes; it logs a warning. It never
+        skips a supplied ``expected_sha256`` or the size cap.
+
         Args:
             ipfs_hash: IPFS hash (CID)
-            expected_sha256: optional hex sha256 the content must match
+            expected_sha256: hex sha256 the content must match (required for
+                dag-pb CIDs unless ``verify=False``)
             max_bytes: optional size ceiling for this download
+            verify: set False to accept unverifiable content (logged)
 
         Returns:
             Downloaded bytes
@@ -151,6 +163,19 @@ class IPFSClient:
             IPFSError: If download fails, exceeds the cap, or fails verification
         """
         limit = DEFAULT_MAX_DOWNLOAD_BYTES if max_bytes is None else max_bytes
+        committed = _expected_digest_from_address(ipfs_hash)
+        if committed is None and expected_sha256 is None:
+            if verify:
+                raise IPFSError(
+                    f"refusing to download {ipfs_hash}: this address does not verify its own "
+                    "content (dag-pb CIDs hash a chunked DAG, not the bytes), so pass "
+                    "expected_sha256 (e.g. the on-chain model_hash), or verify=False to accept "
+                    "unverified bytes explicitly (PBA-L6b-030)."
+                )
+            _log.warning(
+                "IPFS download of %s is UNVERIFIED: verify=False and no expected_sha256; the "
+                "gateway can return arbitrary bytes (PBA-L6b-030).", ipfs_hash,
+            )
         try:
             response = self.session.post(
                 f"{self.api_url}/api/v0/cat",
@@ -177,7 +202,6 @@ class IPFSClient:
             want = expected_sha256[2:] if expected_sha256.startswith("0x") else expected_sha256
             if not hmac.compare_digest(digest.hex(), want.lower()):
                 raise IPFSError(f"IPFS content for {ipfs_hash} does not match expected_sha256")
-        committed = _expected_digest_from_address(ipfs_hash)
         if committed is not None and not hmac.compare_digest(digest, committed):
             raise IPFSError(f"IPFS content does not match its address {ipfs_hash}")
         return data
@@ -362,6 +386,7 @@ class IPFSManager:
         *,
         expected_sha256: str | None = None,
         max_bytes: int | None = None,
+        verify: bool = True,
     ) -> bytes:
         """
         Download data with automatic fallback
@@ -382,7 +407,7 @@ class IPFSManager:
         if self.active_client:
             try:
                 return self.active_client.download_bytes(
-                    ipfs_hash, expected_sha256=expected_sha256, max_bytes=max_bytes)
+                    ipfs_hash, expected_sha256=expected_sha256, max_bytes=max_bytes, verify=verify)
             except IPFSError:
                 pass
 
@@ -391,7 +416,7 @@ class IPFSManager:
             try:
                 if client.is_available():
                     return client.download_bytes(
-                        ipfs_hash, expected_sha256=expected_sha256, max_bytes=max_bytes)
+                        ipfs_hash, expected_sha256=expected_sha256, max_bytes=max_bytes, verify=verify)
 
             except IPFSError as e:
                 last_error = e
@@ -471,6 +496,7 @@ def download_from_ipfs(
     *,
     expected_sha256: str | None = None,
     max_bytes: int | None = None,
+    verify: bool = True,
 ) -> bytes:
     """
     Convenience function to download data from IPFS
@@ -483,4 +509,4 @@ def download_from_ipfs(
         Downloaded bytes
     """
     manager = get_ipfs_manager(ipfs_urls)
-    return manager.download(ipfs_hash, expected_sha256=expected_sha256, max_bytes=max_bytes)
+    return manager.download(ipfs_hash, expected_sha256=expected_sha256, max_bytes=max_bytes, verify=verify)
