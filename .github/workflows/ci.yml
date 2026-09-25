@@ -45,6 +45,8 @@ jobs:
         run: uv run --frozen mypy .
       - name: Test (pytest, locked dependencies)
         run: uv run --frozen pytest -q
+      - name: Dependency audit of the locked set (pip-audit)
+        run: uv run --frozen --with "pip-audit==2.10.0" pip-audit --skip-editable
 
   # PBA-L6b-003 tripwire on the BUILT wheel: build it the way a release does,
   # import citrate_sdk from the unpacked wheel only, and assert that no subset
