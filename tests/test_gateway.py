@@ -36,7 +36,10 @@ def test_chat_completion_posts_to_artifact_base():
 
 def test_status_codes_map_to_typed_errors():
     for status, needle in [(401, "unauthorized"), (402, "balance"), (429, "rate limited"), (503, "unavailable")]:
-        c = GatewayClient(api_key="cgk_x", transport=lambda m, u, h, b, s=status: (s, {}))
+        def transport(m, u, h, b, s=status):
+            return (s, {})
+
+        c = GatewayClient(api_key="cgk_x", transport=transport)
         try:
             c.list_models()
             raise AssertionError("expected GatewayError for %d" % status)

@@ -78,6 +78,15 @@ dev = [
     "mypy>=1.0",
     "isort>=5.13,<7",
     "coverage>=7.0",
+    # CI runs `mypy .` (org reusable python workflow). charts.py guards its
+    # matplotlib import at runtime, but mypy still needs the package to check it;
+    # tomli backs the `tomllib` fallback the pyproject tests use on Python 3.10.
+    "matplotlib>=3.7",
+    "tomli>=2.0",
+    # The runner's preinstalled setuptools (79.0.1 in the py3.11 toolcache) carries
+    # PYSEC-2026-3447, which fails the blocking pip-audit step. Pull the fixed release
+    # into the dev env explicitly rather than ignoring the advisory.
+    "setuptools>=83",
 ]
 docs = [
     "sphinx>=8.1.3",
@@ -176,6 +185,14 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_equality = true
+
+# The org reusable CI runs `mypy .`, which also reaches tests/. Test bodies are
+# still type-checked (check_untyped_defs above); only the annotate-every-test-
+# function requirement is relaxed there. The package itself stays fully strict.
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
 
 # Pytest configuration
 [tool.pytest.ini_options]

@@ -56,7 +56,7 @@ def run_scenario(name: str, years: int = 10) -> 'SimulationResult':
     return result
 
 
-def print_summary(results: dict):
+def print_summary(results: dict) -> None:
     """Print a numerical summary table comparing scenarios."""
     print('\n' + '=' * 80)
     print('CITRATE ECONOMIC VIABILITY REPORT')
@@ -136,7 +136,7 @@ def print_summary(results: dict):
     print('=' * 80)
 
 
-def generate_charts(results: dict):
+def generate_charts(results: dict) -> None:
     """Generate all 8 charts."""
     os.makedirs(CHART_DIR, exist_ok=True)
     medium = results['medium']
@@ -189,7 +189,7 @@ def run_sensitivity_sweep() -> dict:
     return results
 
 
-def main():
+def main() -> None:
     print('Citrate Economic Viability Report Generator')
     print('Running 3 scenarios (low, medium, high) for 10 years each...\n')
 

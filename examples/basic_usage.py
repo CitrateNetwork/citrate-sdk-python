@@ -17,7 +17,7 @@ from citrate_sdk import AccessType, CitrateClient, ModelConfig, ModelType
 from citrate_sdk.crypto import KeyManager
 
 
-def main():
+def main() -> None:
     """Run basic Citrate SDK example"""
 
     # Configuration
@@ -35,6 +35,7 @@ def main():
     # Connect to Citrate
     print(f"Connecting to Citrate at {RPC_URL}...")
     client = CitrateClient(rpc_url=RPC_URL, private_key=PRIVATE_KEY)
+    assert client.key_manager is not None  # constructed with a private key
 
     # Check connection
     try:
