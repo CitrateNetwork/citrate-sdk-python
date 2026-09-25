@@ -9,7 +9,8 @@ import secrets
 from typing import Any, cast
 
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from eth_account import Account
@@ -18,6 +19,48 @@ from eth_account.signers.local import LocalAccount
 from .ecdh_real import ECDHManager
 from .errors import CitrateError
 from .finite_field import reconstruct_secret_bytes, split_secret_bytes
+
+#: Field names that only ever hold Shamir share material (PBA-L6b-003). Deploy
+#: calldata is public; ``CitrateClient.deploy_model`` refuses a payload that
+#: carries any of them, at any depth.
+SHARE_FIELD_DENYLIST = frozenset({"key_shares", "keyShares", "key_share_envelopes", "keyShareEnvelopes"})
+_MAX_GUARD_DEPTH = 32
+
+
+def assert_no_key_share_material(value: Any, _depth: int = 0) -> None:
+    """Raise CitrateError if ``value`` carries a key-share field (PBA-L6b-003)."""
+    if isinstance(value, dict):
+        items = list(value.items())
+    elif isinstance(value, (list, tuple)):
+        items = [(None, v) for v in value]
+    else:
+        return
+    if _depth > _MAX_GUARD_DEPTH:
+        raise CitrateError(
+            f"deploy_model: metadata is nested more than {_MAX_GUARD_DEPTH} levels deep; refusing to "
+            "publish calldata that cannot be fully checked for key-share material (PBA-L6b-003)."
+        )
+    for k, v in items:
+        if k in SHARE_FIELD_DENYLIST:
+            raise CitrateError(
+                f"deploy_model: refusing to publish key-share material ({k!r}) in public deploy "
+                "calldata. Deliver key shares to their holders off-chain (PBA-L6b-003)."
+            )
+        assert_no_key_share_material(v, _depth + 1)
+
+
+def canonical_public_key_hex(public_key: str) -> str:
+    """Normalise a secp256k1 public key (hex, 0x optional, SEC1 compressed or
+    uncompressed) to uncompressed lowercase hex. Raises CitrateError if it is
+    not a valid curve point."""
+    try:
+        raw = bytes.fromhex(public_key[2:] if public_key.startswith("0x") else public_key)
+        point = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1(), raw)
+    except Exception:
+        raise CitrateError("invalid secp256k1 public key")
+    return point.public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    ).hex()
 
 
 def _zeroize(buf: bytearray | None) -> None:
@@ -129,31 +172,113 @@ class KeyManager:
             config: Encryption configuration
 
         Returns:
-            Tuple of (encrypted_data, encryption_metadata)
+            Tuple of (encrypted_data, encryption_metadata). The metadata is
+            PUBLIC (``deploy_model`` writes it to calldata) and never carries key
+            material.
+
+        Raises:
+            CitrateError: if ``config.threshold_shares > 0``. Threshold sharing
+                goes through :meth:`encrypt_model_with_key_shares`, which returns
+                the holder-wrapped shares separately from the metadata
+                (PBA-L6b-003).
         """
-        # Generate random key and nonce
-        key = secrets.token_bytes(32)  # 256-bit key
-        nonce = secrets.token_bytes(12)  # 96-bit nonce for GCM
-
-        # Encrypt data
-        aesgcm = AESGCM(key)
-        ciphertext = aesgcm.encrypt(nonce, model_data, None)
-
-        # Create encryption metadata
-        metadata = {
-            "algorithm": config.algorithm,
-            "nonce": nonce.hex(),
-            "key_derivation": config.key_derivation,
-            "encrypted_key": self._encrypt_key_for_owner(key),
-            "access_control": config.access_control
-        }
-
-        # Add threshold sharing if enabled
-        if config.threshold_shares > 0:
-            key_shares = self._create_key_shares(key, config.threshold_shares, config.total_shares)
-            metadata["key_shares"] = key_shares
-
+        if config.threshold_shares:
+            raise CitrateError(
+                "encrypt_model: threshold_shares > 0 needs encrypt_model_with_key_shares(), "
+                "which wraps each share to a named holder and returns the shares apart "
+                "from the public metadata. Shares are never placed in metadata (PBA-L6b-003)."
+            )
+        ciphertext, metadata, _ = self._encrypt_model(model_data, config, None)
         return ciphertext, metadata
+
+    def encrypt_model_with_key_shares(
+        self,
+        model_data: bytes,
+        config: 'EncryptionConfig'
+    ) -> tuple[bytes, dict[str, Any], list[dict[str, Any]]]:
+        """
+        Encrypt a model and split its key for threshold recovery (PBA-L6b-003).
+
+        Each Shamir share is ECDH-wrapped (V2 envelope) to one of
+        ``config.share_holder_public_keys`` and returned as the third element.
+        Deliver each envelope to its holder OFF-CHAIN. The returned metadata
+        carries only the share parameters, never share values.
+
+        Returns:
+            (encrypted_data, public_metadata, key_share_envelopes)
+        """
+        plan = self._plan_key_sharing(config)
+        if plan is None:
+            raise CitrateError(
+                "encrypt_model_with_key_shares: threshold_shares must be > 0; use encrypt_model()."
+            )
+        return self._encrypt_model(model_data, config, plan)
+
+    def _encrypt_model(
+        self,
+        model_data: bytes,
+        config: 'EncryptionConfig',
+        plan: tuple[int, int, list[str]] | None,
+    ) -> tuple[bytes, dict[str, Any], list[dict[str, Any]]]:
+        key = bytearray(secrets.token_bytes(32))  # 256-bit key
+        nonce = secrets.token_bytes(12)  # 96-bit nonce for GCM
+        try:
+            ciphertext = AESGCM(bytes(key)).encrypt(nonce, model_data, None)
+            # Everything in here is PUBLIC: deploy_model writes it to calldata.
+            metadata: dict[str, Any] = {
+                "algorithm": config.algorithm,
+                "nonce": nonce.hex(),
+                "key_derivation": config.key_derivation,
+                "encrypted_key": self._encrypt_key_for_owner(bytes(key)),
+                "access_control": config.access_control
+            }
+            envelopes: list[dict[str, Any]] = []
+            if plan is not None:
+                threshold, total, holders = plan
+                # PBA-L6b-003: the old code put every raw share into the metadata,
+                # i.e. into public calldata. Shares are now wrapped to holders and
+                # returned beside the metadata, never inside it.
+                envelopes = self._create_key_shares(bytes(key), threshold, total, holders)
+                metadata["key_sharing"] = {"threshold": threshold, "total_shares": total}
+            return ciphertext, metadata, envelopes
+        finally:
+            _zeroize(key)
+
+    @staticmethod
+    def _plan_key_sharing(config: 'EncryptionConfig') -> tuple[int, int, list[str]] | None:
+        """Validate a threshold-sharing request (PBA-L6b-003). None when off."""
+        threshold = config.threshold_shares
+        if not threshold:
+            return None
+        total = config.total_shares
+        if (isinstance(threshold, bool) or isinstance(total, bool)
+                or not isinstance(threshold, int) or not isinstance(total, int)
+                or threshold < 1 or threshold > total or total > 255):
+            raise CitrateError(
+                f"encrypt_model: invalid share parameters (threshold_shares={threshold!r}, "
+                f"total_shares={total!r}); need integers with 1 <= threshold_shares <= "
+                "total_shares <= 255."
+            )
+        holders = config.share_holder_public_keys
+        if not holders:
+            raise CitrateError(
+                "encrypt_model: threshold_shares > 0 requires share_holder_public_keys. Key "
+                "shares are never written to deploy metadata (it is public calldata); each "
+                "share is wrapped to a named holder key and returned for off-chain delivery "
+                "(PBA-L6b-003). Pass one holder public key per share, or set threshold_shares to 0."
+            )
+        if len(holders) != total:
+            raise CitrateError(
+                f"encrypt_model: need one holder public key per share (total_shares={total}, "
+                f"share_holder_public_keys has {len(holders)}) (PBA-L6b-003)."
+            )
+        canonical = [canonical_public_key_hex(h) for h in holders]
+        if len(set(canonical)) != len(canonical):
+            raise CitrateError(
+                "encrypt_model: share_holder_public_keys must be distinct; one holder with "
+                "several shares defeats the threshold (PBA-L6b-003)."
+            )
+        return threshold, total, canonical
 
     def decrypt_model(
         self,
@@ -522,37 +647,70 @@ class KeyManager:
         aesgcm = AESGCM(owner_key)
         return aesgcm.decrypt(nonce, encrypted_key, None)
 
-    def _create_key_shares(self, key: bytes, threshold: int, total: int) -> list[dict[str, str]]:
-        """Create Shamir's secret shares for key using proper finite field arithmetic"""
-        shares_tuples = split_secret_bytes(key, threshold, total)
+    def _create_key_shares(
+        self, key: bytes, threshold: int, total: int, holder_public_keys: list[str]
+    ) -> list[dict[str, Any]]:
+        """Split ``key`` and ECDH-wrap share i to holder i (PBA-L6b-003).
 
-        shares = []
-        for x, share_bytes in shares_tuples:
-            shares.append({
-                "x": str(x),
-                "y": share_bytes.hex(),
-                "threshold": str(threshold)
+        Returns one record per share: ``x`` and ``threshold`` (not secret), the
+        holder's public key, and the V2 ``envelope`` holding the share value.
+        Raw share values never leave this function.
+        """
+        if len(holder_public_keys) != total:
+            raise CitrateError("_create_key_shares: need exactly one holder public key per share")
+        records: list[dict[str, Any]] = []
+        for (x, share_bytes), holder in zip(split_secret_bytes(key, threshold, total), holder_public_keys, strict=True):
+            envelope = self.encrypt_data(share_bytes.hex(), holder)
+            records.append({
+                "x": x,
+                "threshold": threshold,
+                "holder_public_key": holder,
+                "envelope": envelope,
             })
+        return records
 
-        return shares
+    def unwrap_key_share(self, share: dict[str, Any], owner_public_key: str) -> dict[str, str]:
+        """Holder side of PBA-L6b-003: open a key-share envelope addressed to this key.
 
-    def reconstruct_key_from_shares(self, shares: list[dict[str, str]]) -> bytes:
-        """Reconstruct key from Shamir's shares using proper Lagrange interpolation"""
+        ``owner_public_key`` pins the sender (the model owner); an envelope from
+        anyone else is refused. Returns the share in the form
+        :meth:`reconstruct_key_from_shares` takes.
+        """
+        mine = self.ecdh_manager.get_public_key_uncompressed().hex()
+        if not hmac.compare_digest(canonical_public_key_hex(str(share["holder_public_key"])), mine):
+            raise CitrateError("unwrap_key_share: this share is addressed to a different holder key.")
+        y = self.decrypt_data(share["envelope"], canonical_public_key_hex(owner_public_key))
+        return {"x": str(share["x"]), "y": y, "threshold": str(share["threshold"])}
+
+    def reconstruct_key_from_shares(self, shares: list[dict[str, str]], threshold: int) -> bytes:
+        """Reconstruct a key from Shamir shares (Lagrange interpolation).
+
+        PBA-L4-005 / PBA-L6b-003: ``threshold`` comes from the CALLER, never
+        from the shares (an attacker-supplied share could lower it), and share
+        x values are validated before interpolation.
+        """
+        if isinstance(threshold, bool) or not isinstance(threshold, int) or not 1 <= threshold <= 255:
+            raise CitrateError(f"reconstruct_key_from_shares: threshold must be an integer in 1..255, got {threshold!r}")
         if not shares:
             raise CitrateError("No shares provided")
-
-        threshold = int(shares[0]["threshold"])
         if len(shares) < threshold:
             raise CitrateError("Insufficient shares for key reconstruction")
 
-        # Convert shares back to tuples format
         shares_tuples = []
         for share in shares:
-            x = int(share["x"])
-            y = bytes.fromhex(share["y"])
-            shares_tuples.append((x, y))
+            x_text = str(share["x"])
+            if not (x_text.isascii() and x_text.isdigit() and 1 <= len(x_text) <= 3):
+                raise CitrateError(f"Invalid share: x must be an integer in 1..255, got {x_text!r}")
+            try:
+                y = bytes.fromhex(share["y"])
+            except ValueError:
+                raise CitrateError("Invalid share: y is not hex")
+            shares_tuples.append((int(x_text), y))
 
-        return reconstruct_secret_bytes(shares_tuples, threshold)
+        try:
+            return reconstruct_secret_bytes(shares_tuples, threshold)
+        except ValueError as e:
+            raise CitrateError(str(e))
 
 
 class EncryptionConfig:
@@ -564,13 +722,25 @@ class EncryptionConfig:
         key_derivation: str = "HKDF-SHA256",
         access_control: bool = True,
         threshold_shares: int = 0,
-        total_shares: int = 0
+        total_shares: int = 0,
+        share_holder_public_keys: list[str] | None = None,
     ):
+        """
+        Args:
+            threshold_shares: Shamir threshold for splitting the model key; 0
+                (default) disables key sharing.
+            total_shares: number of shares.
+            share_holder_public_keys: REQUIRED when ``threshold_shares > 0``
+                (PBA-L6b-003): one distinct secp256k1 public key per share. Each
+                share is ECDH-wrapped to its holder and returned for off-chain
+                delivery; shares are never written to deploy calldata.
+        """
         self.algorithm = algorithm
         self.key_derivation = key_derivation
         self.access_control = access_control
         self.threshold_shares = threshold_shares
         self.total_shares = total_shares
+        self.share_holder_public_keys = share_holder_public_keys
 
 
 def generate_model_key() -> str:

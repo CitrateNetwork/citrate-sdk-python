@@ -63,13 +63,26 @@ def main() -> None:
 
     print(f"Created sensitive model: {model_path}")
 
-    # Configure encryption with threshold sharing
+    # Key-share holders (simulating three other parties). In production these
+    # are the holders' own public keys; their private keys never leave them.
+    alice, bob, carol = KeyManager(), KeyManager(), KeyManager()
+
+    # Configure encryption with threshold sharing. PBA-L6b-003: every share is
+    # ECDH-wrapped to one named holder and returned on the deployment result for
+    # OFF-CHAIN delivery. Shares are never written to the deploy transaction
+    # (its calldata is public). threshold_shares > 0 without holder keys is
+    # refused.
     encryption_config = EncryptionConfig(
         algorithm="AES-256-GCM",
         key_derivation="HKDF-SHA256",
         access_control=True,
-        threshold_shares=2,  # Need 2 shares to decrypt
-        total_shares=3       # Create 3 total shares
+        threshold_shares=2,  # Need 2 shares to rebuild the model key
+        total_shares=3,      # One share per holder
+        share_holder_public_keys=[
+            alice.get_public_key(),
+            bob.get_public_key(),
+            carol.get_public_key(),
+        ],
     )
 
     # Configure encrypted model deployment
@@ -98,12 +111,17 @@ def main() -> None:
         print(f"Transaction: {deployment.tx_hash}")
         print(f"Encrypted: {deployment.encrypted}")
 
-        # Demonstrate key sharing scenario
+        # Demonstrate key sharing: deliver each wrapped share to its holder
+        # off-chain (e.g. over an authenticated channel); any 2 holders can
+        # then rebuild the model key. Nothing here touched the chain.
         print("\n🔑 Demonstrating key sharing...")
-
-        # Create additional key managers (simulating other parties)
-        alice = KeyManager()
-        bob = KeyManager()
+        envelopes = deployment.key_share_envelopes or []
+        print(f"Wrapped key shares to deliver off-chain: {len(envelopes)}")
+        owner_pubkey = client.key_manager.get_public_key()
+        share_a = alice.unwrap_key_share(envelopes[0], owner_pubkey)
+        share_b = bob.unwrap_key_share(envelopes[1], owner_pubkey)
+        rebuilt = alice.reconstruct_key_from_shares([share_a, share_b], threshold=2)
+        print(f"Alice + Bob rebuilt a {len(rebuilt)}-byte model key")
 
         print(f"Alice address: {alice.get_address()}")
         print(f"Bob address: {bob.get_address()}")

@@ -81,6 +81,13 @@ jobs:
     - name: Check package
       run: twine check dist/*
 
+    # PBA-L6b-003: refuse to publish a wheel whose deploy_model calldata can
+    # rebuild the model key. Runs against the built wheel, not the source tree.
+    - name: Key-share leak tripwire (built wheel)
+      run: |
+        pip install -e .
+        python scripts/check_keyshare_wheel.py dist/*.whl
+
     - name: Upload artifacts
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:

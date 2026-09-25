@@ -11,6 +11,21 @@ jobs:
   python:
     uses: CitrateNetwork/.github/.github/workflows/reusable-python-ci.yml@db5f1a6ddaec28275708265b56762eb1dfc3571b # main
 
+  # PBA-L6b-003 tripwire on the BUILT wheel: build it the way a release does,
+  # import citrate_sdk from the unpacked wheel only, and assert that no subset
+  # of the deploy_model calldata reconstructs the model key. The source-tree
+  # twin is tests/test_pba_r2_l6b_keyshares.py.
+  keyshare-wheel-tripwire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip && pip install -e .
+      - name: Key-share leak tripwire (built wheel)
+        run: python scripts/check_keyshare_wheel.py
+
   # CL-C2 / SW-092: fail the build if the vendored federation_contract artifact
   # drifts from the canonical federation intermediate (which federation's
   # contract-artifact-drift gate keeps fresh vs citrate-chain). The reusable
