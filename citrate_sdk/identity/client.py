@@ -11,12 +11,15 @@ The default transport uses ``requests``.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import requests
+from eth_utils import to_checksum_address
 
 from .._generated import contract as _contract
 from .._url_security import enforce_transport_security
@@ -42,6 +45,64 @@ def _default_transport(method: str, url: str, headers: dict[str, str], body: str
         except ValueError:
             parsed = {}
     return resp.status_code, parsed
+
+
+#: citrate-identity rejects an Expiration Time more than 24 h out.
+_SIWE_MAX_TTL_SECONDS = 24 * 60 * 60
+
+
+def _iso_ms(t: datetime) -> str:
+    t = t.astimezone(timezone.utc)
+    return t.strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (t.microsecond // 1000)
+
+
+def build_siwe_message(
+    address: str,
+    nonce: str,
+    *,
+    statement: str | None = None,
+    uri: str | None = None,
+    chain_id: int | None = None,
+    ttl_seconds: int = 600,
+    issued_at: datetime | None = None,
+) -> str:
+    """Build the EIP-4361 message citrate-identity verifies (PBA-L3a-012 twin).
+
+    Enforces what the authority enforces: chain 40204 (the artifact chain), a
+    mandatory Expiration Time no more than 24 h out, a URI whose host is the
+    authority's, and an EIP-55 checksummed address. Same output as the JS SDK's
+    ``buildSiweMessage``.
+    """
+    issuer = _contract.identity()["issuer"]
+    authority = urlparse(issuer)
+    domain = authority.netloc
+    the_uri = uri or f"{authority.scheme}://{authority.netloc}"
+    if urlparse(the_uri).netloc != domain:
+        raise IdentityError("build_siwe_message: uri host must be the authority domain " + domain)
+    try:
+        checksummed = to_checksum_address(address)
+    except (ValueError, TypeError):
+        raise IdentityError("build_siwe_message: address must be a valid 20-byte hex address")
+    if not re.fullmatch(r"[A-Za-z0-9]{8,}", nonce or ""):
+        raise IdentityError("build_siwe_message: nonce must be the alphanumeric value from siwe_challenge")
+    if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or not 0 < ttl_seconds <= _SIWE_MAX_TTL_SECONDS:
+        raise IdentityError("build_siwe_message: ttl_seconds must be an integer in 1..86400 (the authority caps expiry at 24 h)")
+    start = issued_at or datetime.now(timezone.utc)
+    lines = [
+        f"{domain} wants you to sign in with your Ethereum account:",
+        checksummed,
+        "",
+        # EIP-4361 ABNF: address LF LF [statement LF] LF "URI: ..."
+        *([statement] if statement else []),
+        "",
+        "URI: " + the_uri,
+        "Version: 1",
+        f"Chain ID: {chain_id if chain_id is not None else _contract.chain_id()}",
+        "Nonce: " + nonce,
+        "Issued At: " + _iso_ms(start),
+        "Expiration Time: " + _iso_ms(start + timedelta(seconds=ttl_seconds)),
+    ]
+    return "\n".join(lines)
 
 
 @dataclass
@@ -84,7 +145,7 @@ class IdentityClient:
         return _contract.identity()
 
     def _get_json(self, url: str, bearer: str | None = None) -> Any:
-        enforce_transport_security(url, allow_insecure_http=self.allow_insecure_http)
+        url = enforce_transport_security(url, allow_insecure_http=self.allow_insecure_http)
         headers = {"authorization": "Bearer " + bearer} if bearer else {}
         status, body = self.transport("GET", url, headers, None)
         if not (200 <= status < 300):
@@ -92,7 +153,7 @@ class IdentityClient:
         return body
 
     def _post(self, url: str, headers: dict[str, str], body: str) -> Any:
-        enforce_transport_security(url, allow_insecure_http=self.allow_insecure_http)
+        url = enforce_transport_security(url, allow_insecure_http=self.allow_insecure_http)
         status, parsed = self.transport("POST", url, headers, body)
         if not (200 <= status < 300):
             raise IdentityError("POST %s failed: %d" % (url, status), status)
@@ -170,21 +231,66 @@ class IdentityClient:
         tok = self._post(disc["token_endpoint"], {"content-type": "application/x-www-form-urlencoded"}, body)
         return self._finish_tokens(tok, nonce)
 
-    def refresh(self, refresh_token: str) -> TokenSet:
+    def refresh(self, refresh_token: str, expected_sub: str) -> TokenSet:
+        """Refresh with a rotating refresh token.
+
+        PBA-L3a-011 (Python twin): ``expected_sub`` is REQUIRED — the ``sub`` of
+        the session being refreshed. OIDC Core 12.2 requires the refreshed ID
+        token to carry the same ``sub``; the old code adopted a different one.
+        """
+        if not expected_sub:
+            raise IdentityError("refresh requires expected_sub: the sub of the session being refreshed (PBA-L3a-011).")
         disc = self.discover()
         body = urlencode({"grant_type": "refresh_token", "refresh_token": refresh_token, "client_id": self.client_id})
         tok = self._post(disc["token_endpoint"], {"content-type": "application/x-www-form-urlencoded"}, body)
-        return self._finish_tokens(tok)
+        tokens = self._finish_tokens(tok)
+        if tokens.claims.get("sub") != expected_sub:
+            raise IdentityError(
+                "refresh: ID token sub changed ({} != {}); refusing the refreshed session "
+                "(PBA-L3a-011).".format(tokens.claims.get("sub"), expected_sub)
+            )
+        return tokens
 
-    def siwe_challenge(self, address: str) -> dict[str, Any]:
-        return cast("dict[str, Any]", self._post(self._id["issuer"] + "/siwe/challenge",
-                          {"content-type": "application/json"}, json.dumps({"address": address})))
+    def siwe_challenge(self) -> dict[str, str]:
+        """GET /siwe/challenge -> ``{"nonce": ...}`` (PBA-L3a-012 twin).
 
-    def siwe_verify(self, message: str, signature: str) -> TokenSet:
-        tok = self._post(self._id["issuer"] + "/siwe/verify",
-                         {"content-type": "application/json"},
-                         json.dumps({"message": message, "signature": signature}))
-        return self._finish_tokens(tok)
+        The authority serves this on GET only and returns just the nonce; build
+        the message with :func:`build_siwe_message` and have the wallet sign it.
+        """
+        body = self._get_json(self._id["issuer"] + "/siwe/challenge")
+        nonce = body.get("nonce") if isinstance(body, dict) else None
+        if not isinstance(nonce, str) or len(nonce) < 8:
+            raise IdentityError("siwe_challenge: authority returned no nonce")
+        return {"nonce": nonce}
+
+    def siwe_verify(self, message: str, signature: str) -> dict[str, Any]:
+        """POST /siwe/verify ``{message, signature}`` (PBA-L3a-012 twin).
+
+        Returns ``{"kind": "redirect", "address", "method", "redirect_to"}`` when
+        an OIDC interaction was in flight (follow ``redirect_to`` to finish the
+        code flow), or ``{"kind": "token", "address", "method", "id_token",
+        "claims"}`` for the headless direct grant (only an ID token; it is
+        verified against the JWKS first). Raises IdentityError with the
+        authority's reason otherwise.
+        """
+        url = enforce_transport_security(self._id["issuer"] + "/siwe/verify",
+                                         allow_insecure_http=self.allow_insecure_http)
+        status, parsed = self.transport("POST", url, {"content-type": "application/json"},
+                                        json.dumps({"message": message, "signature": signature}))
+        body = parsed if isinstance(parsed, dict) else {}
+        if not (200 <= status < 300):
+            reason = body.get("reason") if isinstance(body.get("reason"), str) else str(body.get("error") or "")
+            raise IdentityError("POST %s failed: %d%s" % (url, status, " (%s)" % reason if reason else ""), status)
+        address = body.get("address") if isinstance(body.get("address"), str) else ""
+        method = body.get("method") if isinstance(body.get("method"), str) else ""
+        if isinstance(body.get("redirectTo"), str):
+            return {"kind": "redirect", "address": address, "method": method, "redirect_to": body["redirectTo"]}
+        if isinstance(body.get("id_token"), str):
+            claims = verify_id_token(body["id_token"], issuer=self._id["issuer"], audience=self.client_id,
+                                     jwks=self._get_jwks())
+            return {"kind": "token", "address": address, "method": method, "id_token": body["id_token"],
+                    "claims": claims}
+        raise IdentityError("siwe_verify: authority response has neither redirectTo nor id_token")
 
     def user_info(self, access_token: str) -> UserInfo:
         disc = self.discover()

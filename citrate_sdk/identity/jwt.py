@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import time
 from typing import Any, cast
 
@@ -35,6 +36,10 @@ def _decode(seg: str) -> dict[str, Any]:
         raise IdTokenError("malformed token segment")
 
 
+def _is_number(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
 def verify_id_token(
     token: str,
     issuer: str,
@@ -53,6 +58,12 @@ def verify_id_token(
         raise IdTokenError("unsupported or unsafe alg: {!r} (only RS256 accepted)".format(header.get("alg")))
     if not parts[2]:
         raise IdTokenError("empty signature")
+    # PBA-L6b-029: an access token (``at+jwt``, RFC 9068) or logout token
+    # (``logout+jwt``) signed by the same key for the same audience must not
+    # pass as an ID token. ID tokens carry no typ or ``JWT``.
+    typ = header.get("typ")
+    if typ is not None and (not isinstance(typ, str) or typ.upper() != "JWT"):
+        raise IdTokenError(f"unexpected token typ: {typ!r} (an ID token has typ JWT or none)")
 
     kid = header.get("kid")
     rsa_keys = [k for k in jwks if k.get("kty") == "RSA" and k.get("n") and k.get("e")]
@@ -80,8 +91,15 @@ def verify_id_token(
 
     now = (now_ms if now_ms is not None else int(time.time() * 1000)) // 1000
     tol = clock_tolerance_sec
+    # PBA-L6b-029: exp and iat are REQUIRED numeric claims (OIDC Core 2). The
+    # old check ran only when exp happened to be a number, so a token with no
+    # exp, or a string or list one, never expired.
     exp = payload.get("exp")
-    if isinstance(exp, (int, float)) and now > exp + tol:
+    if not _is_number(exp):
+        raise IdTokenError("token has no numeric exp claim")
+    if not _is_number(payload.get("iat")):
+        raise IdTokenError("token has no numeric iat claim")
+    if now > cast(float, exp) + tol:
         raise IdTokenError("token expired")
     nbf = payload.get("nbf")
     if isinstance(nbf, (int, float)) and now + tol < nbf:
