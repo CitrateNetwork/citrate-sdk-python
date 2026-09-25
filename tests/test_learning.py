@@ -289,14 +289,14 @@ class TestClassroomManager:
             mgr.unenroll()
 
     def test_enroll_calldata(self):
-        """enroll hashes invite code and sends correct calldata."""
+        """enroll sends the raw invite code; the contract hashes it (CHAIN-B-C009,
+        PBA-L6b-040 — this test used to pin the removed bytes32-hash ABI)."""
         rpc = MagicMock(return_value="0xtx")
         mgr = self._make_manager(rpc)
         mgr.enroll("secret-code-123")
         tx = rpc.call_args_list[0][0][1][0]
-        expected_hash = keccak256_text("secret-code-123")
         expected = _classroom_iface.encode_function_data(
-            "enrollWithCode", [bytes.fromhex(expected_hash[2:])]
+            "enrollWithCode", [b"secret-code-123"]
         )
         assert tx["data"] == expected
         assert tx["to"] == FAKE_CLASSROOM_ADDR
@@ -409,10 +409,9 @@ class TestAbiSelectors:
         assert data[2:10] == expected_selector
 
     def test_enroll_with_code_selector(self):
-        """enrollWithCode(bytes32) selector matches."""
+        """enrollWithCode(bytes) selector matches the contract (PBA-L6b-040)."""
         iface = AbiInterface(CLASSROOM_REGISTRY_ABI)
-        dummy = bytes(32)
-        data = iface.encode_function_data("enrollWithCode", [dummy])
+        data = iface.encode_function_data("enrollWithCode", [b"code"])
         from citrate_sdk.abi import keccak256
-        expected_selector = keccak256(b"enrollWithCode(bytes32)")[:4].hex()
+        expected_selector = keccak256(b"enrollWithCode(bytes)")[:4].hex()
         assert data[2:10] == expected_selector
