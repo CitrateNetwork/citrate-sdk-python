@@ -83,6 +83,10 @@ dev = [
     # tomli backs the `tomllib` fallback the pyproject tests use on Python 3.10.
     "matplotlib>=3.7",
     "tomli>=2.0",
+    # The runner's preinstalled setuptools (79.0.1 in the py3.11 toolcache) carries
+    # PYSEC-2026-3447, which fails the blocking pip-audit step. Pull the fixed release
+    # into the dev env explicitly rather than ignoring the advisory.
+    "setuptools>=83",
 ]
 docs = [
     "sphinx>=8.1.3",
