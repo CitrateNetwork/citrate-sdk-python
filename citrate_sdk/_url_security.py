@@ -14,8 +14,16 @@ plaintext to a remote host (e.g. an internal lab network without TLS).
 """
 
 import ipaddress
+import re
 import unicodedata
 from urllib.parse import urlparse
+
+from urllib3.exceptions import LocationParseError
+from urllib3.util import parse_url
+
+# PBA-L6b-026 follow-up: RFC 3986 characters only (unreserved, reserved and
+# "%"). URL parsers disagree on anything else, so it is refused.
+_RFC3986_CHARS = re.compile(r"^[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*$")
 
 # PBA-L6b-026: only these schemes are ever accepted.
 _ALLOWED_SCHEMES = frozenset({"https", "http"})
@@ -87,24 +95,51 @@ def enforce_transport_security(url: str, *, allow_insecure_http: bool = False) -
                 "lets an http:// endpoint slip past this check (PBA-L6b-026)."
             )
 
-    parsed = urlparse(url)
+    if not _RFC3986_CHARS.match(url):
+        bad = next(ch for ch in url if not _RFC3986_CHARS.match(ch))
+        raise InsecureTransportError(
+            f"Refusing endpoint URL {url!r}: character {bad!r} is not allowed in a URL "
+            "(RFC 3986) (PBA-L6b-026)."
+        )
+
+    try:
+        parsed = urlparse(url)
+        parsed_host = parsed.hostname
+        requests_view = parse_url(url)
+    except (ValueError, LocationParseError):
+        raise InsecureTransportError(f"Refusing unparseable endpoint URL {url!r} (PBA-L6b-026).")
     scheme = parsed.scheme.lower()
     if scheme not in _ALLOWED_SCHEMES:
         raise InsecureTransportError(
             f"Refusing endpoint URL {url!r}: scheme {parsed.scheme!r} is not https or "
             "http (PBA-L6b-026)."
         )
-    if not parsed.hostname:
+    if not parsed_host:
         raise InsecureTransportError(f"Refusing endpoint URL {url!r}: no host (PBA-L6b-026).")
+    # Credentials in the URL are refused outright; pass them as headers.
+    if "@" in parsed.netloc or parsed.username is not None or requests_view.auth is not None:
+        raise InsecureTransportError(
+            f"Refusing endpoint URL {url!r}: userinfo (user@ / user:pass@) is not "
+            "allowed in an endpoint URL; pass credentials as headers (PBA-L6b-026)."
+        )
+    # Gate on the host exactly as urllib3 (what requests connects to) parses
+    # it, and require urllib.parse to agree.
+    transport_host = (requests_view.host or "").strip("[]").lower()
+    if transport_host != parsed_host.lower():
+        raise InsecureTransportError(
+            f"Refusing endpoint URL {url!r}: urllib.parse sees host {parsed_host!r} but "
+            f"requests would connect to {requests_view.host!r} (PBA-L6b-026)."
+        )
+
     if scheme == "https":
         return url
 
-    if _is_local_host(parsed.hostname):
+    if _is_local_host(parsed_host):
         return url
 
     if not allow_insecure_http:
         raise InsecureTransportError(
-            f"Refusing to connect to remote host {parsed.hostname!r} over "
+            f"Refusing to connect to remote host {parsed_host!r} over "
             f"plaintext http:// ({url!r}). Traffic (including signed "
             f"transactions, private inputs, and bearer credentials) would be "
             f"sent in cleartext and could be intercepted or tampered with. Use "

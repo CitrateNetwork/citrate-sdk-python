@@ -70,16 +70,16 @@ def test_sha256_pointer_is_verified() -> None:
 
 def test_size_cap_stops_the_stream() -> None:
     with pytest.raises(IPFSError, match="exceeds max_bytes"):
-        _client(b"a" * 1025).download_bytes("QmWhatever", max_bytes=1024)
-    assert _client(b"a" * 1024).download_bytes("QmWhatever", max_bytes=1024) == b"a" * 1024
+        _client(b"a" * 1025).download_bytes("QmWhatever", max_bytes=1024, verify=False)
+    assert _client(b"a" * 1024).download_bytes("QmWhatever", max_bytes=1024, verify=False) == b"a" * 1024
 
 
 def test_default_cap_exists() -> None:
     c = _client(b"")
     with mock.patch("citrate_sdk.ipfs.DEFAULT_MAX_DOWNLOAD_BYTES", 10):
         with pytest.raises(IPFSError, match="exceeds max_bytes"):
-            _client(b"a" * 11).download_bytes("QmWhatever")
-    assert c.download_bytes("QmWhatever") == b""
+            _client(b"a" * 11).download_bytes("QmWhatever", verify=False)
+    assert c.download_bytes("QmWhatever", verify=False) == b""
 
 
 def test_manager_threads_the_checks_through() -> None:

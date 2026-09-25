@@ -48,6 +48,17 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
   verify `expected_sha256` and self-describing CIDs.
 - **PBA-L6b-042:** manager writes assert `eth_chainId` against the pinned chain.
 
+- **Verifier follow-ups (still 0.6.2, unreleased):**
+  - Transport-gate hardening: characters outside RFC 3986 and userinfo are
+    refused, and the gate checks the same host the HTTP stack connects to
+    (PBA-L6b-026 / PBA-L6b-027).
+  - IPFS downloads of CIDs that cannot verify their own content need
+    `expected_sha256`, or an explicit `verify=False`, which logs a warning
+    (PBA-L6b-030).
+  - `threshold_shares=1` needs `allow_single_holder_recovery=True`.
+  - The deploy guard also refuses values shaped like shares, not only the
+    known field names.
+
 ### Changed (breaking)
 
 - `IdentityClient.refresh(refresh_token, expected_sub)`: `expected_sub` is
@@ -58,6 +69,10 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
   `{"kind": "redirect" | "token", ...}` (the authority never returned the
   access/refresh tokens the old client expected).
 - `reconstruct_key_from_shares(shares, threshold)`: threshold is required.
+- Endpoint URLs with credentials (`user:pass@host`) or non-RFC-3986
+  characters are refused; pass credentials as headers.
+- `download_bytes("Qm...")` without `expected_sha256` raises unless
+  `verify=False`.
 - Unknown `access` / `tier` / `mode` strings raise `ValueError` (PBA-L6b-031)
   instead of silently becoming option 0.
 

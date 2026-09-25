@@ -17,6 +17,7 @@ import time
 import pytest
 
 # Import SDK modules
+from citrate_sdk._url_security import InsecureTransportError
 from citrate_sdk.client import CitrateClient
 from citrate_sdk.crypto import KeyManager
 from citrate_sdk.errors import CitrateError
@@ -486,8 +487,16 @@ class TestErrorHandling:
             client.get_balance('not_a_valid_address')
 
     def test_network_error_handling(self):
-        """Network errors are handled gracefully"""
-        bad_client = CitrateClient(rpc_url='http://localhost:99999')
+        """Network errors are handled gracefully.
+
+        PBA-L6b-026 follow-up: this used port 99999, which is not a valid port.
+        The transport gate now parses URLs the way urllib3/requests do and refuses
+        an unparseable one at construction, so the network-error path is
+        exercised with a valid port that has no listener instead.
+        """
+        with pytest.raises(InsecureTransportError):
+            CitrateClient(rpc_url='http://localhost:99999')
+        bad_client = CitrateClient(rpc_url='http://localhost:1')
         with pytest.raises(CitrateError):
             bad_client.get_chain_id()
 
