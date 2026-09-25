@@ -5,6 +5,7 @@ Cryptographic utilities for Citrate SDK
 import hashlib
 import hmac
 import json
+import re
 import secrets
 from typing import Any, cast
 
@@ -27,8 +28,35 @@ SHARE_FIELD_DENYLIST = frozenset({"key_shares", "keyShares", "key_share_envelope
 _MAX_GUARD_DEPTH = 32
 
 
+_HEX_RE = re.compile(r"^(0x)?[0-9a-fA-F]+$")
+
+
+def _looks_like_share(d: dict[Any, Any]) -> bool:
+    """A raw Shamir share ({x, y} with y as hex/bytes) or a holder-wrapped
+    share record ({holder_public_key/holderPublicKey, envelope})."""
+    y = d.get("y")
+    if "x" in d and (isinstance(y, (bytes, bytearray)) or (isinstance(y, str) and _HEX_RE.match(y))):
+        return True
+    return "envelope" in d and ("holder_public_key" in d or "holderPublicKey" in d)
+
+
 def assert_no_key_share_material(value: Any, _depth: int = 0) -> None:
-    """Raise CitrateError if ``value`` carries a key-share field (PBA-L6b-003)."""
+    """Raise CitrateError if ``value`` carries key-share material (PBA-L6b-003).
+
+    Refuses the known share field names AND, by structure, any object that
+    looks like a share ({x, y-hex}) or a wrapped share record, at any depth,
+    including inside JSON-encoded string values (a renamed field such as
+    ``myShares`` is caught too).
+    """
+    if isinstance(value, str):
+        # Any string that parses as JSON is checked too (no size cap: a padded
+        # blob must not slip through).
+        try:
+            decoded = json.loads(value)
+        except (ValueError, RecursionError):
+            return
+        assert_no_key_share_material(decoded, _depth + 1)
+        return
     if isinstance(value, dict):
         items = list(value.items())
     elif isinstance(value, (list, tuple)):
@@ -39,6 +67,12 @@ def assert_no_key_share_material(value: Any, _depth: int = 0) -> None:
         raise CitrateError(
             f"deploy_model: metadata is nested more than {_MAX_GUARD_DEPTH} levels deep; refusing to "
             "publish calldata that cannot be fully checked for key-share material (PBA-L6b-003)."
+        )
+    if isinstance(value, dict) and _looks_like_share(value):
+        raise CitrateError(
+            "deploy_model: refusing to publish a value shaped like a key share ({x, y} or a "
+            "wrapped share record) in public deploy calldata. Deliver key shares to their "
+            "holders off-chain (PBA-L6b-003)."
         )
     for k, v in items:
         if k in SHARE_FIELD_DENYLIST:
@@ -258,6 +292,12 @@ class KeyManager:
                 f"encrypt_model: invalid share parameters (threshold_shares={threshold!r}, "
                 f"total_shares={total!r}); need integers with 1 <= threshold_shares <= "
                 "total_shares <= 255."
+            )
+        if threshold == 1 and not config.allow_single_holder_recovery:
+            raise CitrateError(
+                "encrypt_model: threshold_shares=1 lets ANY single holder recover the model key, "
+                "which is not threshold sharing. Pass allow_single_holder_recovery=True if that "
+                "is really intended (PBA-L6b-003 follow-up)."
             )
         holders = config.share_holder_public_keys
         if not holders:
@@ -724,6 +764,7 @@ class EncryptionConfig:
         threshold_shares: int = 0,
         total_shares: int = 0,
         share_holder_public_keys: list[str] | None = None,
+        allow_single_holder_recovery: bool = False,
     ):
         """
         Args:
@@ -734,6 +775,8 @@ class EncryptionConfig:
                 (PBA-L6b-003): one distinct secp256k1 public key per share. Each
                 share is ECDH-wrapped to its holder and returned for off-chain
                 delivery; shares are never written to deploy calldata.
+            allow_single_holder_recovery: threshold_shares=1 (any one holder
+                alone recovers the key) is refused unless this is True.
         """
         self.algorithm = algorithm
         self.key_derivation = key_derivation
@@ -741,6 +784,7 @@ class EncryptionConfig:
         self.threshold_shares = threshold_shares
         self.total_shares = total_shares
         self.share_holder_public_keys = share_holder_public_keys
+        self.allow_single_holder_recovery = allow_single_holder_recovery
 
 
 def generate_model_key() -> str:

@@ -95,7 +95,9 @@ class TestShareGuardAndPlan:
 
     @pytest.mark.parametrize(("t", "n"), [(1, 1), (3, 3), (2, 255)])
     def test_boundary_share_parameters_accepted(self, t: int, n: int) -> None:
-        cfg = EncryptionConfig(threshold_shares=t, total_shares=n, share_holder_public_keys=self._pubs(n))
+        # threshold 1 needs the explicit opt-in since the R2 follow-up.
+        cfg = EncryptionConfig(threshold_shares=t, total_shares=n, share_holder_public_keys=self._pubs(n),
+                               allow_single_holder_recovery=(t == 1))
         _, meta, envs = KeyManager(OWNER).encrypt_model_with_key_shares(b"m", cfg)
         assert meta["key_sharing"] == {"threshold": t, "total_shares": n}
         assert [e["x"] for e in envs] == list(range(1, n + 1))
@@ -441,7 +443,7 @@ class TestIpfsPlumbing:
         calls: list[Any] = []
         c = IPFSClient("http://127.0.0.1:5001", timeout=7.0)
         c.session.post = _session(DATA, calls)  # type: ignore[method-assign]
-        assert c.download_bytes("QmX") == DATA
+        assert c.download_bytes("QmX", verify=False) == DATA
         assert calls == [("http://127.0.0.1:5001/api/v0/cat", {"arg": "QmX"}, 7.0, True)]
 
     def test_0x_prefixed_expected_hash(self) -> None:
@@ -453,20 +455,20 @@ class TestIpfsPlumbing:
         c = IPFSClient("http://127.0.0.1:5001")
         c.session.post = _session(b"", [], status=500)  # type: ignore[method-assign]
         with pytest.raises(IPFSError, match="HTTP 500"):
-            c.download_bytes("QmX")
+            c.download_bytes("QmX", verify=False)
 
         def boom(*a: Any, **k: Any) -> Any:
             raise requests.exceptions.ConnectionError("refused")
         c.session.post = boom  # type: ignore[method-assign]
         with pytest.raises(IPFSError, match="connection error"):
-            c.download_bytes("QmX")
+            c.download_bytes("QmX", verify=False)
 
     def test_non_raw_cidv1_is_not_misverified(self) -> None:
         mh = bytes([0x12, 0x20]) + hashlib.sha256(b"other").digest()
         cid = "b" + base64.b32encode(bytes([0x01, 0x70]) + mh).decode().lower().rstrip("=")
         c = IPFSClient("http://127.0.0.1:5001")
         c.session.post = _session(DATA, [])  # type: ignore[method-assign]
-        assert c.download_bytes(cid) == DATA
+        assert c.download_bytes(cid, verify=False) == DATA
 
     def test_manager_falls_back_and_threads_parameters(self) -> None:
         m = IPFSManager("http://127.0.0.1:5001", fallback_urls=["http://127.0.0.1:5002"])
@@ -481,7 +483,7 @@ class TestIpfsPlumbing:
         m = _single(DATA)
         m.active_client = m.primary
         with pytest.raises(IPFSError, match="exceeds max_bytes"):
-            m.download("QmX", max_bytes=3)
+            m.download("QmX", max_bytes=3, verify=False)
         with pytest.raises(IPFSError, match="expected_sha256"):
             m.download("QmX", expected_sha256="00" * 32)
 
@@ -493,7 +495,7 @@ class TestIpfsPlumbing:
             with pytest.raises(IPFSError, match="expected_sha256"):
                 download_from_ipfs("QmX", expected_sha256="00" * 32)
             with pytest.raises(IPFSError, match="exceeds max_bytes"):
-                download_from_ipfs("QmX", max_bytes=3)
+                download_from_ipfs("QmX", max_bytes=3, verify=False)
 
 
 def _single(body: bytes) -> IPFSManager:
@@ -522,13 +524,13 @@ class TestSecondRound:
         m = IPFSManager("http://127.0.0.1:5001")
         m.primary.session.post = _session(DATA, calls)  # type: ignore[method-assign]
         m.active_client = m.primary
-        assert m.download("QmY") == DATA
+        assert m.download("QmY", verify=False) == DATA
         assert calls[0][1] == {"arg": "QmY"}
 
     def test_download_from_ipfs_passes_the_urls(self) -> None:
         with mock.patch("citrate_sdk.ipfs.get_ipfs_manager", return_value=_single(DATA)) as g:
             from citrate_sdk.ipfs import download_from_ipfs
-            download_from_ipfs("QmX", ["http://127.0.0.1:5009"])
+            download_from_ipfs("QmX", ["http://127.0.0.1:5009"], verify=False)
         g.assert_called_once_with(["http://127.0.0.1:5009"])
 
     def test_pinned_send_verifies_when_the_flag_is_absent(self) -> None:
