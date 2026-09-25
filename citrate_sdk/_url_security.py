@@ -14,7 +14,11 @@ plaintext to a remote host (e.g. an internal lab network without TLS).
 """
 
 import ipaddress
+import unicodedata
 from urllib.parse import urlparse
+
+# PBA-L6b-026: only these schemes are ever accepted.
+_ALLOWED_SCHEMES = frozenset({"https", "http"})
 
 # Hostnames that are always local to the calling machine — plaintext to these
 # never traverses an untrusted network, so http:// is silently allowed.
@@ -49,6 +53,8 @@ def enforce_transport_security(url: str, *, allow_insecure_http: bool = False) -
     """
     Validate the transport security of ``url`` and return it unchanged.
 
+    - Anything but ``https``/``http``, an empty scheme or host, and any URL
+      containing whitespace or control characters RAISES (PBA-L6b-026).
     - ``https://`` URLs pass silently.
     - ``http://`` to a loopback/localhost host passes silently (local traffic).
     - ``http://`` to a *remote* host RAISES :class:`InsecureTransportError`
@@ -64,15 +70,36 @@ def enforce_transport_security(url: str, *, allow_insecure_http: bool = False) -
     implicitly — an automatic http→https upgrade to a host that doesn't serve TLS
     would fail confusingly.
     """
+    # PBA-L6b-026: this used to return non-strings, empty strings and any URL
+    # whose parsed scheme was not "http" unchecked. "\u00a0http://remote"
+    # parses with an EMPTY scheme, so it passed; requests then strips the
+    # whitespace and sends plaintext to the remote host. Now: refuse
+    # whitespace/control/format characters anywhere (they have no business in
+    # an endpoint URL and different parsers treat them differently), allow
+    # only https/http, and refuse an empty scheme or host.
     if not isinstance(url, str) or not url:
-        return url
+        raise InsecureTransportError(f"Refusing an empty or non-string endpoint URL: {url!r}")
+    for ch in url:
+        if ch.isspace() or unicodedata.category(ch)[0] in ("C", "Z"):
+            raise InsecureTransportError(
+                f"Refusing endpoint URL {url!r}: it contains whitespace or a control "
+                f"character (U+{ord(ch):04X}). Parsers disagree on such URLs, which "
+                "lets an http:// endpoint slip past this check (PBA-L6b-026)."
+            )
 
     parsed = urlparse(url)
-    if parsed.scheme != "http":
-        # https, or a non-http scheme we don't police here.
+    scheme = parsed.scheme.lower()
+    if scheme not in _ALLOWED_SCHEMES:
+        raise InsecureTransportError(
+            f"Refusing endpoint URL {url!r}: scheme {parsed.scheme!r} is not https or "
+            "http (PBA-L6b-026)."
+        )
+    if not parsed.hostname:
+        raise InsecureTransportError(f"Refusing endpoint URL {url!r}: no host (PBA-L6b-026).")
+    if scheme == "https":
         return url
 
-    if _is_local_host(parsed.hostname or ""):
+    if _is_local_host(parsed.hostname):
         return url
 
     if not allow_insecure_http:

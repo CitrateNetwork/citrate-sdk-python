@@ -223,8 +223,7 @@ class MemoryClient:
         origin = origin.rstrip("/")
         # SPY-B-004: org routes send `Authorization: Bearer <id_token>` — an OIDC
         # identity assertion. A remote http:// origin would ship it in cleartext.
-        enforce_transport_security(origin, allow_insecure_http=allow_insecure_http)
-        self._origin = origin
+        self._origin = enforce_transport_security(origin, allow_insecure_http=allow_insecure_http)
         self._id_token = id_token
         self._transport = transport or _default_transport
 
@@ -271,7 +270,7 @@ class ByomMemoryClient:
         origin = origin.rstrip("/")
         # SPY-B-004: the BYOM endpoint carries `Authorization: Bearer <connect_token>`.
         # A remote http:// origin would ship it in cleartext.
-        enforce_transport_security(origin, allow_insecure_http=allow_insecure_http)
+        origin = enforce_transport_security(origin, allow_insecure_http=allow_insecure_http)
         self._url = "{}/mcp/u/{}".format(origin, quote(sub, safe=""))
         self._connect_token = connect_token
         self._transport = transport or _default_transport
