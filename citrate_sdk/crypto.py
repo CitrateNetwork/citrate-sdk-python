@@ -77,7 +77,11 @@ class KeyManager:
 
     def get_private_key(self) -> str:
         """Get private key as hex string"""
-        return self.account.key.hex()
+        # Contract: 0x-prefixed, 66 chars. hexbytes >=1.0 dropped the prefix
+        # from ``HexBytes.hex()`` (older releases emitted it), so normalise
+        # rather than depend on the installed hexbytes version.
+        key_hex = self.account.key.hex()
+        return key_hex if key_hex.startswith("0x") else "0x" + key_hex
 
     def get_public_key(self) -> str:
         """Get ECDH public key for sharing"""
