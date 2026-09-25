@@ -25,11 +25,15 @@ def _expected_digest_from_address(ipfs_hash: str) -> bytes | None:
     raw codec (0x55) and a sha2-256 multihash (``bafkrei...``). dag-pb CIDs
     (``Qm...``, ``bafybei...``) hash a chunked DAG, not the bytes; None."""
     if ipfs_hash.startswith("sha256:"):
+        # A pointer that claims to be a sha256 must be one: a malformed one is
+        # refused rather than silently downgraded to "unverifiable".
         try:
             digest = bytes.fromhex(ipfs_hash[len("sha256:"):])
         except ValueError:
-            return None
-        return digest if len(digest) == 32 else None
+            raise IPFSError(f"malformed sha256 content pointer: {ipfs_hash!r}")
+        if len(digest) != 32:
+            raise IPFSError(f"malformed sha256 content pointer: {ipfs_hash!r}")
+        return digest
     if ipfs_hash.startswith("b"):
         body = ipfs_hash[1:].upper()
         try:
