@@ -17,7 +17,7 @@ from citrate_sdk import AccessType, CitrateClient, ModelConfig, ModelType
 from citrate_sdk.crypto import EncryptionConfig, KeyManager
 
 
-def main():
+def main() -> None:
     """Run encrypted inference example"""
 
     # Configuration
@@ -31,6 +31,7 @@ def main():
     # Connect to Citrate
     print(f"Connecting to Citrate at {RPC_URL}...")
     client = CitrateClient(rpc_url=RPC_URL, private_key=PRIVATE_KEY)
+    assert client.key_manager is not None  # constructed with a private key
 
     try:
         address = client.key_manager.get_address()

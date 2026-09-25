@@ -116,9 +116,10 @@ def test_status_codes_map_to_typed_errors():
         (429, "rate limited"),
         (503, "upstream"),
     ]:
-        org = MemoryClient(
-            origin=ORIGIN, id_token="t", transport=lambda m, u, h, b, s=status: (s, {})
-        ).org("o")
+        def transport(m, u, h, b, s=status):
+            return (s, {})
+
+        org = MemoryClient(origin=ORIGIN, id_token="t", transport=transport).org("o")
         try:
             org.recall("r")
             raise AssertionError(f"expected MemoryError for {status}")

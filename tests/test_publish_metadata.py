@@ -20,9 +20,14 @@ from __future__ import annotations
 
 import pathlib
 import re
+import sys
 
 import pytest
-import tomllib
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # Python 3.10 (requires-python floor): stdlib tomllib is 3.11+
+    import tomli as tomllib
 
 PYPROJECT = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
 
@@ -42,7 +47,8 @@ DEAD_REFERENCES = (
 @pytest.fixture(scope="module")
 def project() -> dict:
     with PYPROJECT.open("rb") as fh:
-        return tomllib.load(fh)["project"]
+        project: dict = tomllib.load(fh)["project"]
+    return project
 
 
 def test_repository_url_names_the_federation_repo(project: dict) -> None:

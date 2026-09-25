@@ -77,7 +77,7 @@ class KeyManager:
 
     def get_private_key(self) -> str:
         """Get private key as hex string"""
-        return cast(str, self.account.key.hex())
+        return self.account.key.hex()
 
     def get_public_key(self) -> str:
         """Get ECDH public key for sharing"""
@@ -102,7 +102,9 @@ class KeyManager:
             # before re-prefixing to avoid a ``0x0x...`` result.
             raw = getattr(signed_txn, "raw_transaction", None)
             if raw is None:
-                raw = getattr(signed_txn, "rawTransaction")
+                raw = getattr(signed_txn, "rawTransaction", None)
+            if raw is None:
+                raise CitrateError("signed transaction exposes no raw bytes")
             raw_hex = cast(str, raw.hex())
             if raw_hex.startswith("0x"):
                 raw_hex = raw_hex[2:]
