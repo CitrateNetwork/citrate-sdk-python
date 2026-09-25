@@ -2,19 +2,12 @@ name: Publish Python Package
 
 # Hardenings applied 2026-05-20 per REM-05 (manual GH Actions audit):
 # 1. Top-level least-privilege `permissions: contents: read` (was missing).
-# 2. Per-job permissions overrides where needed (publish job declares
-#    `id-token: write` to enable PyPI trusted-publisher OIDC if/when
-#    the project is configured for it on PyPI — see TODO below).
-# 3. Bumped actions/upload-artifact + download-artifact v3 → v4
-#    (v3 was deprecated by GitHub April 2024; same root cause as
-#    REM-01).
+# 2. Publish uses PyPI Trusted Publishing (OIDC, `id-token: write` on the
+#    publish job only); there is no long-lived PyPI API token.
+# 3. Bumped actions/upload-artifact + download-artifact v3 → v4.
 # 4. Bumped actions/setup-python v4 → v5.
-#
-# TODO (separate work, not blocking): migrate from PYPI_API_TOKEN
-# to PyPI Trusted Publishers (OIDC). When done, drop `password:`
-# from the pypa action input and configure the PyPI project to
-# trust this workflow's identity. Reference:
-# https://docs.pypi.org/trusted-publishers/
+# 5. The test job runs the same frozen uv.lock environment as CI's
+#    locked-env job (Python 3.11), so a release is gated on exactly what CI gates.
 
 on:
   release:
@@ -30,31 +23,31 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python
       uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: "3.11"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+    - name: Install uv
+      run: python -m pip install "uv==0.12.19"
 
-    - name: Lint with ruff
-      run: ruff check .
+    # Same locked environment as CI's locked-env job, so the release is
+    # tested against exactly the dependency set in uv.lock.
+    - name: Install from uv.lock (frozen)
+      run: uv sync --frozen --all-extras --python 3.11
 
-    - name: Type check with mypy
-      run: mypy citrate_sdk
+    - name: Lint (ruff)
+      run: uv run --frozen ruff check .
 
-    - name: Test with pytest
-      run: pytest tests/ -v --cov=citrate_sdk
+    - name: Type-check (mypy)
+      run: uv run --frozen mypy .
+
+    - name: Test (pytest, locked dependencies)
+      run: uv run --frozen pytest -q
 
   build:
     needs: test
@@ -98,10 +91,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
-    # `id-token: write` enables PyPI Trusted Publishers (OIDC) when
-    # the project on PyPI is configured for it. Until then the
-    # `password:` input is still required; keeping both ready makes
-    # the eventual switchover a one-line change.
+    # PyPI Trusted Publishing (OIDC): no API token. The PyPI project trusts
+    # CitrateNetwork/citrate-sdk-python, workflow publish.yml.
     permissions:
       contents: read
       id-token: write
@@ -116,5 +107,4 @@ jobs:
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
       with:
-        password: ${{ secrets.PYPI_API_TOKEN }}
         repository-url: https://upload.pypi.org/legacy/
