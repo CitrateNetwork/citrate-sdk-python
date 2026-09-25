@@ -11,6 +11,20 @@ jobs:
   python:
     uses: CitrateNetwork/.github/.github/workflows/reusable-python-ci.yml@db5f1a6ddaec28275708265b56762eb1dfc3571b # main
 
+  # PBA-L6b-041: uv.lock drifted from pyproject (it locked cryptography 46.0.7
+  # while pyproject requires >=48.0.1) because nothing checked it. Fail when the
+  # lock no longer matches pyproject.toml.
+  uv-lock-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install "uv==0.12.19"
+      - name: uv.lock matches pyproject.toml
+        run: uv lock --check
+
   # PBA-L6b-003 tripwire on the BUILT wheel: build it the way a release does,
   # import citrate_sdk from the unpacked wheel only, and assert that no subset
   # of the deploy_model calldata reconstructs the model key. The source-tree
