@@ -70,14 +70,18 @@ class TestComputeManager:
         """post_job sends correct calldata, value, and contract address."""
         rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
-        model_hash = "0x" + "ab" * 32
-        mgr.post_job(model_hash, "hello world", "1.5", "ZK")
+        model_hash = "0x" + "0b" * 32  # ZK jobs need a model hash below the BN254 modulus
+        # ZK tier: inputHash is the circuit's 32-byte BN254 input commitment.
+        commitment = "0x" + (42).to_bytes(32, "big").hex()
+        mgr.post_job(model_hash, "hello world", "1.5", "ZK", input_commitment=commitment)
         tx = rpc.call_args_list[-1][0][1][0]
         assert tx["to"] == FAKE_COMPUTE_ADDR
         assert int(tx["value"], 16) == to_wei("1.5")
         # Verify function selector
         expected_selector = keccak256(b"postJob(bytes32,bytes,uint256,uint8,uint256,uint256)")[:4].hex()
         assert tx["data"][2:10] == expected_selector
+        assert commitment[2:] in tx["data"]
+        assert b"hello world".hex() not in tx["data"]
 
     def test_bid_on_job_calldata(self):
         """bid_on_job sends correct calldata."""
@@ -150,9 +154,9 @@ class TestComputeManager:
         """leave_pool sends correct calldata."""
         rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
-        mgr.leave_pool(pool_id=9)
+        mgr.request_leave(pool_id=9)
         tx = rpc.call_args_list[-1][0][1][0]
-        expected = _compute_iface.encode_function_data("leavePool", [9])
+        expected = "0x" + keccak256(b"requestLeave(uint256)")[:4].hex() + (9).to_bytes(32, "big").hex()
         assert tx["data"] == expected
 
     def test_dispute_result_calldata(self):
