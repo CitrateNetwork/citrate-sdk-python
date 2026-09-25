@@ -16,7 +16,7 @@ from citrate_sdk import AccessType, CitrateClient, ModelConfig, ModelType
 from citrate_sdk.crypto import KeyManager
 
 
-def main():
+def main() -> None:
     """Run marketplace demo"""
 
     # Configuration
@@ -39,10 +39,12 @@ def main():
 
     # Model seller
     seller = CitrateClient(rpc_url=RPC_URL, private_key=SELLER_KEY)
+    assert seller.key_manager is not None  # constructed with a private key
     print(f"Seller: {seller.key_manager.get_address()}")
 
     # Model buyer
     buyer = CitrateClient(rpc_url=RPC_URL, private_key=BUYER_KEY)
+    assert buyer.key_manager is not None  # constructed with a private key
     print(f"Buyer: {buyer.key_manager.get_address()}")
 
     # Revenue partner (e.g., dataset provider) — a keypair, used as a payee

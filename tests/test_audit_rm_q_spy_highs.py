@@ -81,7 +81,7 @@ def test_userinfo_equals_can_across_claim_matrix():
     """Structural tripwire: user_info()'s capability set equals the can()-derived
     set for every claim, so the two paths cannot diverge on expiry again."""
     caps_attrs = ("ecosystem_tx", "gateway_keys", "academic_data", "confidential_docs")
-    claims = [
+    claims: list[dict] = [
         {"tier": "confidential", "expiresAt": 1},
         {"tier": "confidential", "expiresAt": 10_000_000_000_000},
         {"tier": "academic"},

@@ -116,7 +116,12 @@ def test_inference_sends_to_canonical_precompile():
 # ── SPY-B-008 · cryptography bound admits a non-vulnerable release ────────────
 
 def test_cryptography_bound_admits_fixed_version():
-    import tomllib
+    import sys
+
+    if sys.version_info >= (3, 11):
+        import tomllib
+    else:  # Python 3.10: stdlib tomllib is 3.11+
+        import tomli as tomllib
     from packaging.requirements import Requirement
 
     data = tomllib.loads((_REPO / "pyproject.toml").read_text())
