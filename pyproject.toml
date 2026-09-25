@@ -55,7 +55,7 @@ classifiers = [
 # HKDF envelope (crypto.py) and RSA ID-token verification (identity/jwt.py).
 dependencies = [
     "requests~=2.33",
-    "cryptography>=48.0.1,<51",
+    "cryptography>=50.0.0,<51",
     "eth-account~=0.9",
     "web3~=7.15",
     "numpy~=2.0",
