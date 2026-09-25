@@ -230,16 +230,19 @@ class CitrateClient:
         if encryption_metadata:
             tx_data["encryption_metadata"] = encryption_metadata
 
-        # PBA-L6b-003: this calldata is public. Refuse to send if anything in it,
-        # including caller-supplied metadata, carries a key-share field.
-        assert_no_key_share_material(tx_data)
+        # PBA-L6b-003: this calldata is public. Serialise ONCE, run the share
+        # guard on the parsed result of exactly those bytes, and send those
+        # same bytes, so the guard judges what is sent rather than how the
+        # live objects answer when read.
+        payload = json.dumps(tx_data)
+        assert_no_key_share_material(json.loads(payload))
 
         # Call model deployment precompile. SPY-B-007: the address is read from
         # the vendored canonical table (ModelDeploy = 0x..0100), NOT a hardcoded
         # `0x0100..0100` literal. The pre-fix literals were wrong in the high byte
         # (`0x01`-prefixed), so every deploy dispatched to an address with no
         # precompile entry and the state change never happened.
-        tx_hash = self._send_transaction(self._precompile("ModelDeploy"), tx_data)
+        tx_hash = self._send_transaction(self._precompile("ModelDeploy"), payload)
 
         # Wait for confirmation
         receipt = self._wait_for_receipt(tx_hash)
@@ -465,11 +468,16 @@ class CitrateClient:
     def _send_transaction(
         self,
         to_address: str,
-        data: dict[str, Any],
+        data: dict[str, Any] | str,
         value: int = 0,
         gas_limit: int = 500000
     ) -> str:
-        """Send transaction to blockchain"""
+        """Send transaction to blockchain.
+
+        ``data`` is either a dict (serialised here) or an already-serialised
+        JSON string, which is sent byte-for-byte (see ``deploy_model``).
+        """
+        encoded = data if isinstance(data, str) else json.dumps(data)
         if not self.key_manager:
             raise CitrateError("Private key required for transactions")
 
@@ -487,7 +495,7 @@ class CitrateClient:
             "gas": hex(gas_limit),
             "gasPrice": hex(20_000_000_000),  # 20 gwei
             "nonce": hex(nonce),
-            "data": "0x" + json.dumps(data).encode().hex(),
+            "data": "0x" + encoded.encode().hex(),
             "chainId": self._eip155_chain_id(),
         }
 
