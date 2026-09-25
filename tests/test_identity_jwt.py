@@ -45,7 +45,7 @@ def _make_token(payload, header=None):
 
 def _valid():
     import time
-    return {"iss": ISSUER, "sub": "user-1", "aud": AUD, "exp": int(time.time()) + 3600}
+    return {"iss": ISSUER, "sub": "user-1", "aud": AUD, "iat": int(time.time()), "exp": int(time.time()) + 3600}
 
 
 def _raises(exc, fn):

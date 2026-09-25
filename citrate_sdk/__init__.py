@@ -48,7 +48,7 @@ from .types import (
     StakingInfo,
 )
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 __author__ = "Citrate Team"
 
 __all__ = [

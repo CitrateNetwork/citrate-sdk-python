@@ -15,10 +15,13 @@ Mirrors sdk/javascript/src/learning.ts exactly (method names in snake_case).
 
 from __future__ import annotations
 
-import time
+import secrets
 from typing import Any, cast
 
-from .abi import AbiInterface, from_wei, keccak256_text, to_wei
+from eth_abi import decode as abi_decode
+
+from ._chain_guard import expected_chain_id, pinned_send
+from .abi import AbiInterface, enum_index, from_wei, keccak256_text, to_wei
 from .errors import ConfigurationError
 from .types import (
     ClassroomInfo,
@@ -92,9 +95,13 @@ LIQUID_STAKING_ABI = [
     "function nextWithdrawalId() view returns (uint256)",
 ]
 
+_CLASSROOM_TUPLE = "(address,string,uint256,uint256,uint256,bool)"
+
 CLASSROOM_REGISTRY_ABI = [
     "function createClassroom(string name, uint256 maxStudents, bytes32 inviteCodeHash)",
-    "function enrollWithCode(bytes32 inviteCodeHash)",
+    # PBA-L6b-040: CHAIN-B-C009 changed this to take the raw code and hash it
+    # on-chain; the old bytes32 selector no longer exists on the contract.
+    "function enrollWithCode(bytes inviteCode)",
     "function unenroll()",
     "function removeStudent(address student)",
     "function whitelistModel(bytes32 modelHash)",
@@ -166,7 +173,7 @@ class _RpcMixin:
             "gas": hex(self._gas_limit),
             "gasPrice": self._gas_price,
         }
-        return cast(str, self._rpc_call("eth_sendTransaction", [tx]))
+        return pinned_send(self, tx)
 
 
 # ============================================================================
@@ -189,8 +196,13 @@ class LearningManager(_RpcMixin):
         gas_limit: int = 500_000,
         gas_price: str = "0x3b9aca00",
         contract_addresses: dict[str, str] | None = None,
+        *,
+        chain_id: int | None = None,
     ) -> None:
         self._rpc_call = rpc_call
+        # PBA-L6b-042: writes assert eth_chainId against this before sending.
+        self._expected_chain_id = expected_chain_id(chain_id)
+        self._chain_verified = False
         self._default_account = default_account
         self._gas_limit = gas_limit
         self._gas_price = gas_price
@@ -316,7 +328,7 @@ class LearningManager(_RpcMixin):
             Transaction hash (pool ID emitted in PoolCreated event).
         """
         addr = self._require_learning_pool()
-        access_num = ACCESS_TYPES.index(access) if access in ACCESS_TYPES else 0
+        access_num = enum_index(ACCESS_TYPES, access, "access type")
         min_stake_wei = to_wei(min_stake)
         data = self._iface.encode_function_data("createPool", [
             name, description, access_num, min_stake_wei,
@@ -472,8 +484,13 @@ class StakingManager(_RpcMixin):
         gas_limit: int = 500_000,
         gas_price: str = "0x3b9aca00",
         staking_address: str | None = None,
+        *,
+        chain_id: int | None = None,
     ) -> None:
         self._rpc_call = rpc_call
+        # PBA-L6b-042: writes assert eth_chainId against this before sending.
+        self._expected_chain_id = expected_chain_id(chain_id)
+        self._chain_verified = False
         self._default_account = default_account
         self._gas_limit = gas_limit
         self._gas_price = gas_price
@@ -639,13 +656,22 @@ class ClassroomManager(_RpcMixin):
         gas_limit: int = 300_000,
         gas_price: str = "0x3b9aca00",
         classroom_address: str | None = None,
+        *,
+        chain_id: int | None = None,
     ) -> None:
         self._rpc_call = rpc_call
+        # PBA-L6b-042: writes assert eth_chainId against this before sending.
+        self._expected_chain_id = expected_chain_id(chain_id)
+        self._chain_verified = False
         self._default_account = default_account
         self._gas_limit = gas_limit
         self._gas_price = gas_price
         self._classroom_address = classroom_address
         self._iface = AbiInterface(CLASSROOM_REGISTRY_ABI)
+        #: The invite code used by the most recent ``create`` call (generated
+        #: when none was passed). Only its hash goes on-chain; share the code
+        #: with students out of band.
+        self.last_invite_code: str | None = None
 
     def _require_address(self) -> str:
         if not self._classroom_address:
@@ -660,13 +686,19 @@ class ClassroomManager(_RpcMixin):
         Args:
             name: Classroom display name.
             max_students: Maximum enrollment capacity.
-            invite_code: Plain-text invite code (will be hashed on-chain). Auto-generated if omitted.
+            invite_code: Plain-text invite code (only its keccak256 goes on-chain).
+                If omitted, a random 128-bit code is generated
+                (``secrets.token_urlsafe(16)``) and left in ``last_invite_code``.
 
         Returns:
             Transaction hash.
         """
         addr = self._require_address()
-        code = invite_code or f"classroom-{int(time.time() * 1000)}"
+        # PBA-L6b-028: the old default was ``classroom-<ms timestamp>``; its hash
+        # is public at createClassroom and the block timestamp bounds the
+        # window, so it fell to a sub-second brute force.
+        code = invite_code or secrets.token_urlsafe(16)
+        self.last_invite_code = code
         code_hash = keccak256_text(code)
         code_hash_bytes = bytes.fromhex(code_hash[2:])
         data = self._iface.encode_function_data("createClassroom", [
@@ -677,7 +709,8 @@ class ClassroomManager(_RpcMixin):
     def enroll(self, invite_code: str) -> str:
         """Enroll as a student in a classroom using an invite code.
 
-        Data source: ClassroomRegistry.enrollWithCode(bytes32) via eth_sendTransaction.
+        Data source: ClassroomRegistry.enrollWithCode(bytes) via eth_sendTransaction.
+        The contract hashes the raw code itself (CHAIN-B-C009, PBA-L6b-040).
 
         Args:
             invite_code: Plain-text invite code provided by teacher.
@@ -686,9 +719,7 @@ class ClassroomManager(_RpcMixin):
             Transaction hash.
         """
         addr = self._require_address()
-        code_hash = keccak256_text(invite_code)
-        code_hash_bytes = bytes.fromhex(code_hash[2:])
-        data = self._iface.encode_function_data("enrollWithCode", [code_hash_bytes])
+        data = self._iface.encode_function_data("enrollWithCode", [invite_code.encode("utf-8")])
         return self._send_transaction(addr, data)
 
     def unenroll(self) -> str:
@@ -762,7 +793,11 @@ class ClassroomManager(_RpcMixin):
         addr = self._require_address()
         data = self._iface.encode_function_data("getClassroom", [teacher_address])
         result = self._eth_call(addr, data)
-        decoded = self._iface.decode_function_result("getClassroom", result)
+        # getClassroom returns a ``Classroom`` struct with a dynamic member, which
+        # the ABI encodes as ONE tuple behind an offset, not six flat values
+        # (found by the PBA-L6b-040 parity test).
+        raw = bytes.fromhex(result[2:] if result.startswith("0x") else result)
+        (decoded,) = abi_decode([_CLASSROOM_TUPLE], raw)
         teacher_addr, name, max_students, student_count, created_at, exists = decoded
 
         return ClassroomInfo(

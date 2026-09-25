@@ -142,26 +142,35 @@ class TestKeyManager:
         assert alice_shared == bob_shared
 
     def test_key_shares_creation(self):
-        """Test Shamir's secret sharing key creation"""
+        """Shamir shares are wrapped to their holders (PBA-L6b-003): the
+        records carry x, threshold, the holder key and an ECDH envelope, and
+        never a raw share value."""
         key_manager = KeyManager()
+        holders = [KeyManager() for _ in range(3)]
         key = b"test_key_32_bytes_long_for_sharing"
 
-        shares = key_manager._create_key_shares(key, threshold=2, total=3)
+        shares = key_manager._create_key_shares(
+            key, threshold=2, total=3, holder_public_keys=[h.get_public_key() for h in holders]
+        )
 
         assert len(shares) == 3
         for share in shares:
-            assert "x" in share
-            assert "y" in share
-            assert "threshold" in share
-            assert share["threshold"] == "2"
+            assert set(share) == {"x", "threshold", "holder_public_key", "envelope"}
+            assert share["threshold"] == 2
+            assert "y" not in share
 
     def test_key_reconstruction(self):
-        """Test key reconstruction from shares"""
+        """Holders unwrap their shares and rebuild the key with the caller's threshold."""
         key_manager = KeyManager()
+        holders = [KeyManager() for _ in range(3)]
         original_key = b"test_key_32_bytes_long_for_sharing"
 
-        shares = key_manager._create_key_shares(original_key, threshold=2, total=3)
-        reconstructed_key = key_manager.reconstruct_key_from_shares(shares[:2])
+        shares = key_manager._create_key_shares(
+            original_key, threshold=2, total=3, holder_public_keys=[h.get_public_key() for h in holders]
+        )
+        owner_pub = key_manager.get_public_key()
+        opened = [holders[i].unwrap_key_share(shares[i], owner_pub) for i in (0, 1)]
+        reconstructed_key = key_manager.reconstruct_key_from_shares(opened, threshold=2)
 
         # With real Shamir's Secret Sharing, original key should be perfectly reconstructed
         assert reconstructed_key == original_key
@@ -174,7 +183,7 @@ class TestKeyManager:
         ]
 
         with pytest.raises(CitrateError, match="Insufficient shares"):
-            key_manager.reconstruct_key_from_shares(shares)
+            key_manager.reconstruct_key_from_shares(shares, threshold=3)
 
     def test_sign_transaction(self):
         """Test transaction signing"""

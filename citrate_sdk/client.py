@@ -13,7 +13,7 @@ import requests
 
 from ._generated import contract as _contract
 from ._url_security import enforce_transport_security
-from .crypto import EncryptionConfig, KeyManager
+from .crypto import EncryptionConfig, KeyManager, assert_no_key_share_material
 from .errors import CitrateError, ModelNotFoundError
 from .ipfs import upload_to_ipfs
 from .models import InferenceRequest, InferenceResult, ModelConfig, ModelDeployment
@@ -197,14 +197,22 @@ class CitrateClient:
         # Encrypt model if requested
         encrypted_data = None
         encryption_metadata = None
+        key_share_envelopes: list[dict[str, Any]] | None = None
 
         if config.encrypted:
             if not config.encryption_config:
                 config.encryption_config = EncryptionConfig()
 
-            encrypted_data, encryption_metadata = self.key_manager.encrypt_model(
-                model_data, config.encryption_config
-            )
+            if config.encryption_config.threshold_shares:
+                # PBA-L6b-003: shares come back wrapped to their holders and
+                # separate from the public metadata; they never enter calldata.
+                encrypted_data, encryption_metadata, key_share_envelopes = (
+                    self.key_manager.encrypt_model_with_key_shares(model_data, config.encryption_config)
+                )
+            else:
+                encrypted_data, encryption_metadata = self.key_manager.encrypt_model(
+                    model_data, config.encryption_config
+                )
 
         # Upload to IPFS
         ipfs_hash = self._upload_to_ipfs(encrypted_data or model_data)
@@ -221,6 +229,10 @@ class CitrateClient:
 
         if encryption_metadata:
             tx_data["encryption_metadata"] = encryption_metadata
+
+        # PBA-L6b-003: this calldata is public. Refuse to send if anything in it,
+        # including caller-supplied metadata, carries a key-share field.
+        assert_no_key_share_material(tx_data)
 
         # Call model deployment precompile. SPY-B-007: the address is read from
         # the vendored canonical table (ModelDeploy = 0x..0100), NOT a hardcoded
@@ -241,7 +253,8 @@ class CitrateClient:
             ipfs_hash=ipfs_hash,
             encrypted=config.encrypted,
             access_price=config.access_price,
-            deployment_time=int(time.time())
+            deployment_time=int(time.time()),
+            key_share_envelopes=key_share_envelopes,
         )
 
     def inference(

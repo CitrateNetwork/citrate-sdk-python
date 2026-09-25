@@ -3,7 +3,73 @@
 All notable changes to `citrate-labs-sdk` are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [0.6.1] - 2026-08-02 — SECREM-02 K3 envelope hardening
+## [0.6.2] - 2026-09-25 — Pre-bounty audit remediation (SECURITY)
+
+> **Security advisory: upgrade from 0.6.0 (and any unreleased 0.6.1 build).**
+> `CitrateClient.deploy_model` with `encrypted=True` and
+> `EncryptionConfig(threshold_shares > 0)` wrote **every Shamir share of the
+> model AES key** into the public deploy calldata (`encryption_metadata.key_shares`).
+> Anyone reading the chain could rebuild the key and decrypt the uploaded model
+> with no private key (PBA-L6b-003, CRITICAL; same design flaw as the JS SDK's
+> PBA-L4-001). Models deployed that way should be treated as disclosed: rotate
+> (re-encrypt under a new key) and redeploy. Deploys with `threshold_shares=0`
+> (the default) were not affected. 0.6.0 is to be yanked on PyPI.
+
+### Security
+
+- **PBA-L6b-003 (CRITICAL):** key shares never enter metadata or calldata.
+  `encrypt_model` refuses `threshold_shares > 0`; the new
+  `KeyManager.encrypt_model_with_key_shares` requires
+  `EncryptionConfig.share_holder_public_keys` (one distinct secp256k1 key per
+  share), ECDH-wraps each share to its holder (V2 envelope) and returns the
+  envelopes separately. `deploy_model` returns them on
+  `ModelDeployment.key_share_envelopes` for **off-chain** delivery; holders open
+  theirs with `KeyManager.unwrap_key_share(envelope, owner_public_key)`.
+  `deploy_model` also refuses any payload that carries a key-share field.
+  Tripwires: a calldata decoder asserts no subset of the deploy calldata
+  rebuilds the key, in the test suite and against the built wheel in CI and in
+  the publish workflow.
+- Shamir hardening (variant of the JS PBA-L4-005): every share is validated
+  (integer x in 1..255, distinct, equal non-empty y);
+  `reconstruct_key_from_shares(shares, threshold)` takes the threshold from the
+  caller; `verify_shares` now checks consistency.
+- **PBA-L6b-026:** the transport gate refused plain remote `http://` but passed
+  `"\u00a0http://..."` (empty parsed scheme). It now refuses whitespace and
+  control characters anywhere, allows only https/http, and refuses an empty
+  scheme or host.
+- **PBA-L6b-027:** `verify_wallet_address_on_chain` goes through the transport
+  gate, asserts `eth_chainId`, and requires factory code.
+- **PBA-L6b-028:** the default classroom invite code is
+  `secrets.token_urlsafe(16)` (was a millisecond timestamp); it is available as
+  `ClassroomManager.last_invite_code`.
+- **PBA-L6b-029:** `verify_id_token` requires numeric `exp` and `iat` and
+  refuses a `typ` other than `JWT`.
+- **PBA-L6b-030:** IPFS downloads stream under `max_bytes` (default 1 GiB) and
+  verify `expected_sha256` and self-describing CIDs.
+- **PBA-L6b-042:** manager writes assert `eth_chainId` against the pinned chain.
+
+### Changed (breaking)
+
+- `IdentityClient.refresh(refresh_token, expected_sub)`: `expected_sub` is
+  required; a refreshed token naming another `sub` is refused.
+- `IdentityClient.siwe_challenge()` takes no argument and returns `{"nonce"}`
+  (GET, as the authority serves it); build the message with
+  `build_siwe_message(...)`. `siwe_verify` returns
+  `{"kind": "redirect" | "token", ...}` (the authority never returned the
+  access/refresh tokens the old client expected).
+- `reconstruct_key_from_shares(shares, threshold)`: threshold is required.
+- Unknown `access` / `tier` / `mode` strings raise `ValueError` (PBA-L6b-031)
+  instead of silently becoming option 0.
+
+### Fixed
+
+- **PBA-L6b-040:** `ClassroomManager.enroll` encodes `enrollWithCode(bytes)`
+  (the contract hashes the raw code); `get_classroom` decodes the struct
+  return. A parity test pins every ClassroomRegistry selector.
+- **PBA-L6b-041:** `uv.lock` regenerated (cryptography 50.0.1) and checked in
+  CI with `uv lock --check`.
+
+## [0.6.1] - 2026-08-02 (never published) — SECREM-02 K3 envelope hardening
 
 **Package metadata (2026-09-24):** Repository, Bug Tracker and Changelog now point at
 `github.com/CitrateNetwork/citrate-sdk-python`. The published 0.6.0 pointed at a private

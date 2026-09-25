@@ -19,6 +19,7 @@ from citrate_sdk.farming import (
     TESTNET_FARMING_ABI,
     FarmingManager,
 )
+from tests._chain_rpc import chain_rpc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -112,7 +113,7 @@ class TestFarmingManager:
         rpc = MagicMock(return_value=_encode_uint256(100))
         mgr = self._make_manager(rpc)
         mgr.get_my_score()  # no address parameter
-        call_args = rpc.call_args_list[0][0]
+        call_args = rpc.call_args_list[-1][0]
         assert call_args[1][0]["to"] == FAKE_FARMING_ADDR
 
     def test_get_my_score_selector(self):
@@ -180,7 +181,7 @@ class TestFarmingManager:
         rpc = MagicMock(return_value=encoded)
         mgr = self._make_manager(rpc)
         mgr.get_leaderboard()  # default count
-        call_args = rpc.call_args_list[0][0]
+        call_args = rpc.call_args_list[-1][0]
         expected = _farming_iface.encode_function_data("getTopContributors", [20])
         assert call_args[1][0]["data"] == expected
 
@@ -188,10 +189,10 @@ class TestFarmingManager:
 
     def test_claim_calldata(self):
         """claim sends correct calldata."""
-        rpc = MagicMock(return_value="0xtx")
+        rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
         mgr.claim()
-        tx = rpc.call_args_list[0][0][1][0]
+        tx = rpc.call_args_list[-1][0][1][0]
         expected = _farming_iface.encode_function_data("claim")
         assert tx["data"] == expected
         assert tx["to"] == FAKE_FARMING_ADDR

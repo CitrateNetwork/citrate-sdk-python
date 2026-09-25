@@ -11,11 +11,13 @@ only ground truth.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import requests
 from eth_utils import keccak, to_checksum_address
 
 from .._generated import contract as _contract
+from .._url_security import enforce_transport_security
 
 _PREFIX = bytes.fromhex("603d3d8160223d3973")
 _SEP = bytes.fromhex("6009")
@@ -65,30 +67,62 @@ def predict_wallet_address(
     return to_checksum_address(keccak(packed)[-20:])
 
 
+def _rpc(url: str, method: str, params: list[Any], timeout: float) -> Any:
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    resp = requests.post(url, data=json.dumps(payload),
+                         headers={"content-type": "application/json"}, timeout=timeout)
+    resp.raise_for_status()
+    body = resp.json()
+    if not isinstance(body, dict) or "error" in body:
+        raise WalletPredictionError(f"{method} failed: {body.get('error') if isinstance(body, dict) else body!r}")
+    return body.get("result")
+
+
 def verify_wallet_address_on_chain(
     user_id: str,
     rpc_url: str | None = None,
     factory: str | None = None,
     implementation: str | None = None,
     timeout: float = 10.0,
+    *,
+    chain_id: int | None = None,
+    allow_insecure_http: bool = False,
 ) -> str:
     """Verify the local prediction against the on-chain factory (ground truth).
 
     The factory is the deployer, so its own ``predictAddress`` view is authoritative — this is
     the check that would have caught the 2026-07-25 stale-authority bug. Raises on mismatch.
+
+    PBA-L6b-027: the RPC is only as trustworthy as the path to it. The URL goes
+    through the transport gate (remote plaintext refused unless
+    ``allow_insecure_http``), ``eth_chainId`` must equal ``chain_id`` (default:
+    the pinned federation chain), and the factory must have code there — so a
+    MITM or a wrong-chain RPC cannot make "verified" pass by echoing the
+    publicly computable prediction.
     """
     local = predict_wallet_address(user_id, factory=factory, implementation=implementation)
     aa = _contract.aa_stack()
     f = factory or aa["CitrateWalletFactory"]
-    url = rpc_url or _contract.rpc_url()
+    url = enforce_transport_security(rpc_url or _contract.rpc_url(), allow_insecure_http=allow_insecure_http)
+    expected_chain = int(chain_id) if chain_id is not None else _contract.chain_id()
+
+    reported = _rpc(url, "eth_chainId", [], timeout)
+    try:
+        reported_chain = int(str(reported), 16)
+    except ValueError:
+        raise WalletPredictionError(f"eth_chainId returned {reported!r}")
+    if reported_chain != expected_chain:
+        raise WalletPredictionError(
+            f"RPC is on chain {reported_chain}, expected chain {expected_chain} — refusing to verify"
+        )
+
+    code = _rpc(url, "eth_getCode", [f, "latest"], timeout)
+    if not isinstance(code, str) or code.lower() in ("", "0x", "0x0"):
+        raise WalletPredictionError(f"factory {f} has no code on chain {expected_chain} — refusing to verify")
+
     selector = keccak(b"predictAddress(bytes32)")[:4].hex()
     data = "0x" + selector + user_id[2:]
-    payload = {"jsonrpc": "2.0", "id": 1, "method": "eth_call",
-               "params": [{"to": f, "data": data}, "latest"]}
-    resp = requests.post(url, data=json.dumps(payload),
-                         headers={"content-type": "application/json"}, timeout=timeout)
-    resp.raise_for_status()
-    result = resp.json().get("result")
+    result = _rpc(url, "eth_call", [{"to": f, "data": data}, "latest"], timeout)
     if not isinstance(result, str) or len(result) < 66:
         raise WalletPredictionError("factory predictAddress returned no address")
     onchain = to_checksum_address("0x" + result[-40:])

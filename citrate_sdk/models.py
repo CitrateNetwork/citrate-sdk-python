@@ -73,6 +73,9 @@ class ModelDeployment:
     deployment_time: int
     gas_used: int | None = None
     deployment_cost: int | None = None
+    #: PBA-L6b-003: holder-wrapped key shares when threshold sharing was
+    #: requested. Deliver each to its holder off-chain; none of it is on-chain.
+    key_share_envelopes: list[dict[str, Any]] | None = None
 
 
 @dataclass

@@ -49,8 +49,7 @@ class GatewayClient:
         # SPY-B-004: this client sends `Authorization: Bearer <cgk_ key>` on every
         # call. A remote http:// base_url would ship the key in cleartext — flag it
         # (localhost http:// stays silent; allow_insecure_http silences remote http).
-        enforce_transport_security(base, allow_insecure_http=allow_insecure_http)
-        self._base = base
+        self._base = enforce_transport_security(base, allow_insecure_http=allow_insecure_http)
         self._transport = transport or _default_transport
 
     def _call(self, method: str, path: str, body: str | None = None) -> Any:

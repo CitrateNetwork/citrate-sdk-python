@@ -121,6 +121,9 @@ class ShamirSecretSharing:
             threshold: Minimum number of shares needed to reconstruct
             total_shares: Total number of shares to create
         """
+        if isinstance(threshold, bool) or isinstance(total_shares, bool) or \
+                not isinstance(threshold, int) or not isinstance(total_shares, int):
+            raise ValueError("Threshold and total shares must be integers")
         if threshold <= 0:
             raise ValueError("Threshold must be positive")
         if threshold > total_shares:
@@ -161,6 +164,37 @@ class ShamirSecretSharing:
 
         return shares
 
+    @staticmethod
+    def validate_shares(shares: list[tuple[int, bytes]]) -> None:
+        """Validate a share set before any interpolation (PBA-L4-005 variant).
+
+        Every share, not only the first ``threshold``, must have an integer x in
+        1..255 (x = 0 is the secret itself: a share there dictates the output),
+        x values must be distinct, and every y must be non-empty bytes of one
+        common length. Raises ValueError on the first violation.
+        """
+        if not shares:
+            raise ValueError("No shares provided")
+        seen: set[int] = set()
+        length: int | None = None
+        for share in shares:
+            if not isinstance(share, tuple) or len(share) != 2:
+                raise ValueError("Invalid share: expected an (x, y) tuple")
+            x, y = share
+            if isinstance(x, bool) or not isinstance(x, int) or x < 1 or x > 255:
+                raise ValueError(f"Invalid share: x must be an integer in 1..255, got {x!r}")
+            if x in seen:
+                raise ValueError(f"Invalid share set: duplicate share x = {x}")
+            seen.add(x)
+            if not isinstance(y, (bytes, bytearray)):
+                raise ValueError("Invalid share: y must be bytes")
+            if length is None:
+                length = len(y)
+            elif len(y) != length:
+                raise ValueError("Invalid share set: all shares must have the same length")
+        if not length:
+            raise ValueError("Invalid share set: share y is empty")
+
     def reconstruct_secret(self, shares: list[tuple[int, bytes]]) -> bytes:
         """
         Reconstruct secret from shares
@@ -171,26 +205,19 @@ class ShamirSecretSharing:
         Returns:
             Reconstructed secret bytes
         """
+        self.validate_shares(shares)
         if len(shares) < self.threshold:
             raise ValueError(f"Need at least {self.threshold} shares, got {len(shares)}")
 
         # Use first threshold shares
         active_shares = shares[:self.threshold]
-
-        # Ensure all shares have same length
         share_length = len(active_shares[0][1])
-        if not all(len(share[1]) == share_length for share in active_shares):
-            raise ValueError("All shares must have the same length")
 
-        # Reconstruct each byte position
         secret_bytes = []
         for byte_pos in range(share_length):
-            # Extract byte values for this position
             points = [(x, share_bytes[byte_pos]) for x, share_bytes in active_shares]
-
-            # Use Lagrange interpolation to find f(0)
-            reconstructed_byte = self._lagrange_interpolation(points, 0)
-            secret_bytes.append(reconstructed_byte)
+            # Lagrange interpolation at x = 0
+            secret_bytes.append(self._lagrange_interpolation(points, 0))
 
         return bytes(secret_bytes)
 
@@ -215,61 +242,49 @@ class ShamirSecretSharing:
 
     def _lagrange_interpolation(self, points: list[tuple[int, int]], x: int) -> int:
         """
-        Lagrange interpolation to find f(x) given points
+        Lagrange interpolation: f(x) from the given points.
 
-        Args:
-            points: List of (x_i, y_i) points
-            x: Point to evaluate at
-
-        Returns:
-            f(x) value
+        Callers validate first (``validate_shares``): x values are distinct
+        integers in 1..255, so every denominator is nonzero; ``GF256.divide``
+        still raises on a zero divisor as a backstop.
         """
         result = 0
-
         for i, (x_i, y_i) in enumerate(points):
-            # Calculate Lagrange basis polynomial L_i(x)
             numerator = 1
             denominator = 1
-
             for j, (x_j, _) in enumerate(points):
-                if i != j:
-                    # For x=0, numerator becomes (0 - x_j) = -x_j = x_j (in GF(2^8))
-                    numerator = GF256.multiply(numerator, x_j)
-                    denominator = GF256.multiply(denominator, GF256.subtract(x_i, x_j))
-
-            # L_i(x) = numerator / denominator
-            if denominator == 0:
-                raise ValueError("Denominator is zero in Lagrange interpolation")
-
-            lagrange_coeff = GF256.divide(numerator, denominator)
-
-            # Add y_i * L_i(x) to result
-            result = GF256.add(result, GF256.multiply(y_i, lagrange_coeff))
-
+                if i == j:
+                    continue
+                # (x - x_j) = x XOR x_j in GF(2^8); at x = 0 this is x_j.
+                numerator = GF256.multiply(numerator, GF256.subtract(x, x_j))
+                denominator = GF256.multiply(denominator, GF256.subtract(x_i, x_j))
+            result = GF256.add(result, GF256.multiply(y_i, GF256.divide(numerator, denominator)))
         return result
 
     def verify_shares(self, shares: list[tuple[int, bytes]]) -> bool:
         """
-        Verify that shares are consistent (can be used to detect tampering)
+        Check that a share set is structurally valid and CONSISTENT: every share
+        beyond the first ``threshold`` must lie on the polynomial those first
+        ``threshold`` shares define (PBA-L4-005 variant; the old version only
+        checked that interpolation did not raise).
 
-        Args:
-            shares: List of shares to verify
-
-        Returns:
-            True if shares are consistent
+        With exactly ``threshold`` shares there is no redundancy, so any
+        structurally valid set is consistent by definition and a forged share
+        cannot be detected. Use verifiable secret sharing when that matters.
         """
+        try:
+            self.validate_shares(shares)
+        except ValueError:
+            return False
         if len(shares) < self.threshold:
             return False
-
-        try:
-            # Try to reconstruct with different combinations
-            for i in range(len(shares) - self.threshold + 1):
-                test_shares = shares[i:i + self.threshold]
-                self.reconstruct_secret(test_shares)
-            return True
-
-        except Exception:
-            return False
+        base = shares[:self.threshold]
+        for x_extra, y_extra in shares[self.threshold:]:
+            for b, expected in enumerate(y_extra):
+                points = [(x, y[b]) for x, y in base]
+                if self._lagrange_interpolation(points, x_extra) != expected:
+                    return False
+        return True
 
 
 def split_secret_bytes(secret: bytes, threshold: int, total_shares: int) -> list[tuple[int, bytes]]:

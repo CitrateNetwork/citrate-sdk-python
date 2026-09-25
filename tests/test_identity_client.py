@@ -36,7 +36,7 @@ NONCE = "nonce-abc123"
 
 def _id_token(nonce=NONCE):
     header = {"alg": "RS256", "kid": KID, "typ": "JWT"}
-    payload = {"iss": ID["issuer"], "sub": "user-1", "aud": CLIENT_ID, "exp": int(time.time()) + 3600}
+    payload = {"iss": ID["issuer"], "sub": "user-1", "aud": CLIENT_ID, "iat": int(time.time()), "exp": int(time.time()) + 3600}
     if nonce is not None:
         payload["nonce"] = nonce
     si = _b64url(header) + "." + _b64url(payload)
