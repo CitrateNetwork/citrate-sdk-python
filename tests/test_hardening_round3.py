@@ -81,7 +81,6 @@ Y32 = "ab" * 32
     {"x": 256, "y": Y32},
     {"x": "one", "y": Y32},
     {"x": 1, "y": "ab" * 15},
-    {"x": 1, "y": "abc" * 11},
     {"x": 1, "y": b"\x01\x02"},
     {"grid": json.dumps({"x": 3, "y": "1234"})},
     {"x": "0", "y": Y32},
@@ -105,6 +104,8 @@ def test_coordinate_like_metadata_is_not_refused(meta: dict[str, Any]) -> None:
     {"a": {"x": 2, "y": bytes(32)}},
     {"a": {"x": 2, "y": "1" * 64}},
     {"blob": json.dumps([{"x": 2, "y": Y32}])},
+    # Odd-length share-sized hex: lenient decoders elsewhere still read it.
+    {"a": {"x": 1, "y": "abc" * 11}},
     {"a": {"x": 255, "y": Y32}},
     {"a": {"x": "1", "y": Y32}},
     {"a": {"x": 1, "y": bytes(16)}},
