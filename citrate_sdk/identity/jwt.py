@@ -99,6 +99,8 @@ def verify_id_token(
         raise IdTokenError("token has no numeric exp claim")
     if not _is_number(payload.get("iat")):
         raise IdTokenError("token has no numeric iat claim")
+    if cast(float, payload["iat"]) > now + tol:
+        raise IdTokenError("token issued in the future (iat)")
     if now > cast(float, exp) + tol:
         raise IdTokenError("token expired")
     nbf = payload.get("nbf")
