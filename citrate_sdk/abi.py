@@ -47,6 +47,21 @@ def keccak256_text(text: str) -> str:
 # Wei / Ether conversion
 # ---------------------------------------------------------------------------
 
+def enum_index(choices: Sequence[str], value: str, what: str) -> int:
+    """Index of ``value`` in ``choices`` (exact, else case-insensitive exact).
+
+    PBA-L6b-031: callers used ``choices.index(v) if v in choices else 0``, so an
+    unknown or mis-cased value silently became option 0 (an Open pool, a
+    Commitment-tier job). Unknown values now raise ValueError.
+    """
+    if value in choices:
+        return list(choices).index(value)
+    folded = [c.lower() for c in choices]
+    if isinstance(value, str) and value.lower() in folded:
+        return folded.index(value.lower())
+    raise ValueError(f"unknown {what} {value!r}; expected one of {', '.join(choices)}")
+
+
 def to_wei(ether: str) -> int:
     """Convert an ether-denominated decimal string to wei (int)."""
     return Web3.to_wei(ether, "ether")

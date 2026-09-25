@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from .abi import AbiInterface, from_wei, to_wei
+from .abi import AbiInterface, enum_index, from_wei, to_wei
 from .errors import ConfigurationError
 from .types import ComputeJob, ComputePool, Dispute, ProviderInfo
 
@@ -159,7 +159,7 @@ class ComputeManager:
         addr = self._require_compute_address()
         h = model_hash if model_hash.startswith("0x") else f"0x{model_hash}"
         hash_bytes = bytes.fromhex(h[2:])
-        tier_num = JOB_TIERS.index(tier) if tier in JOB_TIERS else 0
+        tier_num = enum_index(JOB_TIERS, tier, "tier")
         max_price_wei = to_wei(max_price)
         input_bytes = input_data.encode("utf-8")
         data = self._compute_iface.encode_function_data("postJob", [
@@ -363,7 +363,7 @@ class ComputeManager:
             Transaction hash (pool ID emitted in PoolCreated event).
         """
         addr = self._require_compute_address()
-        mode_num = POOL_MODES.index(mode) if mode in POOL_MODES else 0
+        mode_num = enum_index(POOL_MODES, mode, "pool mode")
         price_wei = to_wei(price)
         data = self._compute_iface.encode_function_data("createPool", [
             name, mode_num, min_providers, throughput, price_wei,

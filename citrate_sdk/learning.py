@@ -20,7 +20,7 @@ from typing import Any, cast
 
 from eth_abi import decode as abi_decode
 
-from .abi import AbiInterface, from_wei, keccak256_text, to_wei
+from .abi import AbiInterface, enum_index, from_wei, keccak256_text, to_wei
 from .errors import ConfigurationError
 from .types import (
     ClassroomInfo,
@@ -322,7 +322,7 @@ class LearningManager(_RpcMixin):
             Transaction hash (pool ID emitted in PoolCreated event).
         """
         addr = self._require_learning_pool()
-        access_num = ACCESS_TYPES.index(access) if access in ACCESS_TYPES else 0
+        access_num = enum_index(ACCESS_TYPES, access, "access type")
         min_stake_wei = to_wei(min_stake)
         data = self._iface.encode_function_data("createPool", [
             name, description, access_num, min_stake_wei,
