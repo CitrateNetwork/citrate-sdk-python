@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from citrate_sdk.abi import AbiInterface, from_wei, keccak256_text, to_wei
+from citrate_sdk.abi import AbiInterface, from_wei, to_wei
 from citrate_sdk.errors import ConfigurationError
 from citrate_sdk.learning import (
     CLASSROOM_REGISTRY_ABI,
@@ -289,18 +289,14 @@ class TestClassroomManager:
         with pytest.raises(ConfigurationError, match="ClassroomRegistry"):
             mgr.unenroll()
 
-    def test_enroll_calldata(self):
-        """enroll sends the raw invite code; the contract hashes it (CHAIN-B-C009,
-        PBA-L6b-040 — this test used to pin the removed bytes32-hash ABI)."""
+    def test_enroll_is_deprecated_and_refuses_plain_codes(self):
+        """enroll() forwards to enroll_with_invite (citrate-chain #222 removed
+        enrollWithCode); a plain-text code is refused before any send."""
         rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
-        mgr.enroll("secret-code-123")
-        tx = rpc.call_args_list[-1][0][1][0]
-        expected = _classroom_iface.encode_function_data(
-            "enrollWithCode", [b"secret-code-123"]
-        )
-        assert tx["data"] == expected
-        assert tx["to"] == FAKE_CLASSROOM_ADDR
+        with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="invite secret"):
+            mgr.enroll("secret-code-123")
+        assert all(c[0][0] != "eth_sendTransaction" for c in rpc.call_args_list)
 
     def test_unenroll_calldata(self):
         """unenroll sends correct calldata."""
@@ -336,14 +332,16 @@ class TestClassroomManager:
         assert tx["data"] == expected
 
     def test_rotate_invite_code_calldata(self):
-        """rotate_invite_code hashes new code and sends correct calldata."""
+        """rotate_invite_code registers the new invite key's commitment."""
+        from eth_account import Account
+        from eth_utils import keccak
         rpc = chain_rpc("0xtx")
         mgr = self._make_manager(rpc)
-        mgr.rotate_invite_code("new-secret")
+        secret = "0x" + "4d" * 32
+        mgr.rotate_invite_code(secret)
         tx = rpc.call_args_list[-1][0][1][0]
-        expected_hash = keccak256_text("new-secret")
         expected = _classroom_iface.encode_function_data(
-            "rotateInviteCode", [bytes.fromhex(expected_hash[2:])]
+            "rotateInviteCode", [keccak(bytes.fromhex(Account.from_key(secret).address[2:]))]
         )
         assert tx["data"] == expected
 
@@ -409,10 +407,10 @@ class TestAbiSelectors:
         expected_selector = keccak256(b"deposit()")[:4].hex()
         assert data[2:10] == expected_selector
 
-    def test_enroll_with_code_selector(self):
-        """enrollWithCode(bytes) selector matches the contract (PBA-L6b-040)."""
+    def test_enroll_with_invite_selector(self):
+        """enrollWithInvite(address,bytes) selector matches the contract (citrate-chain #222)."""
         iface = AbiInterface(CLASSROOM_REGISTRY_ABI)
-        data = iface.encode_function_data("enrollWithCode", [b"code"])
+        data = iface.encode_function_data("enrollWithInvite", ["0x" + "11" * 20, b"sig"])
         from citrate_sdk.abi import keccak256
-        expected_selector = keccak256(b"enrollWithCode(bytes)")[:4].hex()
+        expected_selector = keccak256(b"enrollWithInvite(address,bytes)")[:4].hex()
         assert data[2:10] == expected_selector

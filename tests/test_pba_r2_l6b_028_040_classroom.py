@@ -10,7 +10,8 @@ L6b-040: the SDK encoded ``enrollWithCode(bytes32 hash)``, the pre-CHAIN-B-C009
 ABI. ClassroomRegistry now takes ``enrollWithCode(bytes inviteCode)`` and hashes
 it on-chain, so every SDK enroll hit a selector the contract does not have. The
 parity test below pins every ClassroomRegistry selector the SDK encodes to the
-contract source (citrate-chain contracts/src/ClassroomRegistry.sol @ 21726055).
+contract source (citrate-chain contracts/src/ClassroomRegistry.sol @ d89200c2,
+where #222 replaced enrollWithCode with enrollWithInvite).
 It also caught ``getClassroom``: it returns a ``Classroom`` struct with a
 dynamic member (ABI: one tuple, behind an offset), which the SDK decoded flat.
 """
@@ -20,15 +21,18 @@ import time
 from typing import Any
 
 from eth_abi import encode as abi_encode
+from eth_account import Account
+from eth_utils import keccak
 
 from citrate_sdk.abi import AbiInterface, keccak256, keccak256_text
 from citrate_sdk.learning import CLASSROOM_REGISTRY_ABI, ClassroomManager
 
-# Signatures as declared in ClassroomRegistry.sol @ citrate-chain 21726055
+# Signatures as declared in ClassroomRegistry.sol @ citrate-chain d89200c2 (#222)
 # (external/public functions and public-mapping getters the SDK calls).
 CONTRACT_SIGNATURES = {
     "createClassroom": "createClassroom(string,uint256,bytes32)",
-    "enrollWithCode": "enrollWithCode(bytes)",
+    "enrollWithInvite": "enrollWithInvite(address,bytes)",
+    "codeToTeacher": "codeToTeacher(bytes32)",  # public mapping getter
     "unenroll": "unenroll()",
     "removeStudent": "removeStudent(address)",
     "whitelistModel": "whitelistModel(bytes32)",
@@ -69,23 +73,17 @@ def test_every_sdk_selector_matches_the_contract() -> None:
         assert fn.selector == keccak256(CONTRACT_SIGNATURES[name].encode())[:4], name
 
 
-def test_enroll_sends_the_raw_code_as_bytes() -> None:
-    sent: dict[str, Any] = {}
-    _manager(sent).enroll("secret-code")
-    data = sent["tx"]["data"]
-    assert data[2:10] == keccak256(b"enrollWithCode(bytes)")[:4].hex()
-    assert data[10:] == abi_encode(["bytes"], [b"secret-code"]).hex()
-
-
 def test_default_invite_code_is_unguessable_and_returned() -> None:
     sent: dict[str, Any] = {}
     mgr = _manager(sent)
     t0 = int(time.time() * 1000)
     mgr.create("Grade 5", 30)
     code = mgr.last_invite_code
-    assert code is not None and len(code) >= 22 and not code.startswith("classroom-")
+    # citrate-chain #222: the invite is a 32-byte key; the commitment is
+    # keccak256(abi.encodePacked(inviteKey address)).
+    assert code is not None and len(code) == 66 and not code.startswith("classroom-")
     commit = bytes.fromhex(sent["tx"]["data"][2:])[4 + 64: 4 + 96]
-    assert commit == bytes.fromhex(keccak256_text(code)[2:])
+    assert commit == keccak(bytes.fromhex(Account.from_key(code).address[2:]))
     # The audit's brute force (+/-2 s of millisecond timestamps) finds nothing.
     for ms in range(t0 - 2_000, t0 + 2_000):
         assert bytes.fromhex(keccak256_text(f"classroom-{ms}")[2:]) != commit
@@ -93,13 +91,14 @@ def test_default_invite_code_is_unguessable_and_returned() -> None:
     assert mgr.last_invite_code != code
 
 
-def test_explicit_invite_code_is_used_verbatim() -> None:
+def test_explicit_invite_secret_is_used_verbatim() -> None:
     sent: dict[str, Any] = {}
     mgr = _manager(sent)
-    mgr.create("Grade 5", 30, invite_code="teacher-chosen")
-    assert mgr.last_invite_code == "teacher-chosen"
+    secret = "0x" + "3c" * 32
+    mgr.create("Grade 5", 30, invite_code=secret)
+    assert mgr.last_invite_code == secret
     commit = bytes.fromhex(sent["tx"]["data"][2:])[4 + 64: 4 + 96]
-    assert commit == bytes.fromhex(keccak256_text("teacher-chosen")[2:])
+    assert commit == keccak(bytes.fromhex(Account.from_key(secret).address[2:]))
 
 
 def test_get_classroom_decodes_the_struct_return() -> None:

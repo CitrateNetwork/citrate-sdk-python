@@ -28,15 +28,52 @@ SHARE_FIELD_DENYLIST = frozenset({"key_shares", "keyShares", "key_share_envelope
 _MAX_GUARD_DEPTH = 32
 
 
-_HEX_RE = re.compile(r"^(0x)?[0-9a-fA-F]+$")
+#: A share's y is at least 16 bytes (the SDK shares 32-byte keys), as
+#: even-length hex, optionally 0x-prefixed.
+_MIN_SHARE_BYTES = 16
+_STRICT_HEX_RE = re.compile(r"(?:0[xX])?((?:[0-9a-fA-F]{2})+)")
+_HEX_RUN_RE = re.compile(r"[0-9a-fA-F]{%d,}" % (2 * _MIN_SHARE_BYTES))
+_WS_RE = re.compile(r"\s+")
+
+
+def parse_share_y(y: str) -> bytes:
+    """The SDK's one share-value parser: optional 0x/0X, then an even number of
+    hex digits and nothing else (no whitespace, no trailing junk). Raises
+    ValueError otherwise. ``reconstruct_key_from_shares`` uses it."""
+    m = _STRICT_HEX_RE.fullmatch(y) if isinstance(y, str) else None
+    if m is None:
+        raise ValueError("share y must be an even-length hex string")
+    return bytes.fromhex(m.group(1))
+
+
+def _share_y_like(y: str) -> bool:
+    """Deliberately LENIENT (a superset of ``parse_share_y`` and of the lenient
+    parsers other consumers may use): after removing whitespace, any run of
+    >= 16 bytes of hex digits counts (a 0x/0X prefix cannot join the run)."""
+    return _HEX_RUN_RE.search(_WS_RE.sub("", y)) is not None
+
+
+def _share_x(x: Any) -> bool:
+    if isinstance(x, bool):
+        return False
+    if isinstance(x, int):
+        return 1 <= x <= 255
+    if isinstance(x, float):
+        # JSON "1.0" is the Number 1 in JS: treat an integral float as an integer.
+        return x.is_integer() and 1 <= x <= 255
+    return isinstance(x, str) and x.isascii() and x.isdigit() and 1 <= int(x) <= 255
 
 
 def _looks_like_share(d: dict[Any, Any]) -> bool:
-    """A raw Shamir share ({x, y} with y as hex/bytes) or a holder-wrapped
-    share record ({holder_public_key/holderPublicKey, envelope})."""
+    """A raw Shamir share ({x in 1..255, y of share length as hex or bytes})
+    or a holder-wrapped share record ({holder_public_key/holderPublicKey,
+    envelope}). Short or coordinate-like values are not treated as shares."""
     y = d.get("y")
-    if "x" in d and (isinstance(y, (bytes, bytearray)) or (isinstance(y, str) and _HEX_RE.match(y))):
-        return True
+    if "x" in d and _share_x(d["x"]):
+        if isinstance(y, (bytes, bytearray)) and len(y) >= _MIN_SHARE_BYTES:
+            return True
+        if isinstance(y, str) and _share_y_like(y):
+            return True
     return "envelope" in d and ("holder_public_key" in d or "holderPublicKey" in d)
 
 
@@ -742,9 +779,9 @@ class KeyManager:
             if not (x_text.isascii() and x_text.isdigit() and 1 <= len(x_text) <= 3):
                 raise CitrateError(f"Invalid share: x must be an integer in 1..255, got {x_text!r}")
             try:
-                y = bytes.fromhex(share["y"])
+                y = parse_share_y(share["y"])
             except ValueError:
-                raise CitrateError("Invalid share: y is not hex")
+                raise CitrateError("Invalid share: y is not hex (an even-length hex string is required)")
             shares_tuples.append((int(x_text), y))
 
         try:

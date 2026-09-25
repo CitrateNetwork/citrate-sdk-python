@@ -59,6 +59,16 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
   - The deploy guard also refuses values shaped like shares, not only the
     known field names.
 
+- **Round 3 (still 0.6.2, unreleased):**
+  - `ClassroomManager` now follows the invite-key flow of ClassroomRegistry
+    (citrate-chain #222). `create()` and `rotate_invite_code()` return the
+    invite secret in `last_invite_code`. `enroll_with_invite(secret)` signs
+    the enrolment. `enroll()` is deprecated.
+  - `verify_id_token` refuses an `iat` beyond the clock tolerance in the
+    future (parity with the JS SDK).
+  - The share guard matches only share-shaped values (x in 1..255 and a y of
+    at least 16 bytes), so coordinate-like metadata is no longer refused.
+
 ### Changed (breaking)
 
 - `IdentityClient.refresh(refresh_token, expected_sub)`: `expected_sub` is

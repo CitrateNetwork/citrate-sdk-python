@@ -226,11 +226,11 @@ def _rpc_capture(result: str = "0xhash") -> tuple[Any, list[Any]]:
 
 
 class TestLearningManagers:
-    def test_create_targets_the_registry_with_a_22_char_code(self) -> None:
+    def test_create_targets_the_registry_with_a_32_byte_invite_secret(self) -> None:
         rpc, sent = _rpc_capture()
         mgr = ClassroomManager(rpc, default_account=ACCT, classroom_address=ADDR)
         mgr.create("c", 3)
-        assert sent[-1]["to"] == ADDR and len(mgr.last_invite_code or "") == 22
+        assert sent[-1]["to"] == ADDR and len(mgr.last_invite_code or "") == 66
 
     def test_create_pool_targets_the_pool(self) -> None:
         rpc, sent = _rpc_capture()

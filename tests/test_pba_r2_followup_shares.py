@@ -67,15 +67,15 @@ class TestStructuralGuard:
 
     @pytest.mark.parametrize("meta", [
         {"myShares": shares},
-        {"a": [{"x": 1, "y": "ab12"}]},
-        {"a": {"x": "1", "y": "0xab"}},
+        {"a": [{"x": 1, "y": "ab12" * 16}]},
+        {"a": {"x": "1", "y": "0x" + "ab" * 32}},
         {"blob": json.dumps({"parts": shares})},
-        {"blob": json.dumps([{"x": 2, "y": "cd"}])},
+        {"blob": json.dumps([{"x": 2, "y": "cd" * 32}])},
         {"w": {"holder_public_key": "02" + "11" * 32, "envelope": "{}"}},
         {"w": [{"holderPublicKey": "02" + "11" * 32, "envelope": "{}"}]},
-        {"y": {"x": 1, "y": b"\\x01"}},
-        {"padded": '  {"x": 1, "y": "ab"}  '},
-        {"big": json.dumps({"pad": "a" * 1_100_000, "s": {"x": 1, "y": "ab"}})},
+        {"y": {"x": 1, "y": b"\\x01" * 32}},
+        {"padded": '  {"x": 1, "y": "abababababababababababababababababababababababababababababababab"}  '},
+        {"big": json.dumps({"pad": "a" * 1_100_000, "s": {"x": 1, "y": "ab" * 32}})},
     ], ids=lambda m: str(list(m)[0]))
     def test_share_shaped_values_are_refused(self, meta: dict[str, Any]) -> None:
         with pytest.raises(CitrateError, match="key share|key-share"):
@@ -104,7 +104,7 @@ class TestStructuralGuard:
 
     def test_message(self) -> None:
         with pytest.raises(CitrateError, match=r"shaped like a key share \(\{x, y\} or a wrapped share record\) in public deploy calldata\. Deliver key shares"):
-            assert_no_key_share_material({"a": {"x": 1, "y": "ab"}})
+            assert_no_key_share_material({"a": {"x": 1, "y": "ab" * 32}})
 
     def test_deploy_refuses_renamed_share_field(self, tmp_path: Path) -> None:
         mp = tmp_path / "m.onnx"

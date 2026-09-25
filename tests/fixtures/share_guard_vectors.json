@@ -1,0 +1,399 @@
+{
+ "_comment": "Shared share-guard test vectors. The SAME file is committed to citrate-sdk-js and citrate-sdk-python (tests/fixtures/share_guard_vectors.json); each SDK's guard must refuse every refuse:true entry and accept every refuse:false entry. Keep the two copies byte-identical.",
+ "version": 1,
+ "vectors": [
+  {
+   "name": "int x, 64-hex y",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "abababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "x 255",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 255,
+     "y": "abababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "decimal-string x",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": "7",
+     "y": "abababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "uppercase y",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB"
+    }
+   }
+  },
+  {
+   "name": "0x-prefixed y",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "0xabababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "0X-prefixed y",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "0Xabababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "16-byte y",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "abababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "float x 1.0",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1.0,
+     "y": "abababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "float x 255.0",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 255.0,
+     "y": "abababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "JSON string with float x",
+   "refuse": true,
+   "meta": {
+    "blob": "{\"x\": 1.0, \"y\": \"abababababababababababababababababababababababababababababababab\"}"
+   }
+  },
+  {
+   "name": "y with spaces between bytes",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab"
+    }
+   }
+  },
+  {
+   "name": "y with trailing space",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "abababababababababababababababababababababababababababababababab "
+    }
+   }
+  },
+  {
+   "name": "y with leading space",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": " abababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "y with trailing newline",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "abababababababababababababababababababababababababababababababab\n"
+    }
+   }
+  },
+  {
+   "name": "y with trailing junk char",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "ababababababababababababababababababababababababababababababababz"
+    }
+   }
+  },
+  {
+   "name": "y odd length",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "ababababababababababababababababababababababababababababababababa"
+    }
+   }
+  },
+  {
+   "name": "y with tabs",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": "abab\tabab\tabab\tabab\tabab\tabab\tabab\tabab\tabab\tabab\tabab\tabab\tabab\tabab\tabab\tabab"
+    }
+   }
+  },
+  {
+   "name": "array of shares",
+   "refuse": true,
+   "meta": {
+    "s": [
+     {
+      "x": 1,
+      "y": "abababababababababababababababababababababababababababababababab"
+     },
+     {
+      "x": 2,
+      "y": "abababababababababababababababababababababababababababababababab"
+     }
+    ]
+   }
+  },
+  {
+   "name": "nested depth 4",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "b": {
+      "c": {
+       "d": {
+        "x": 3,
+        "y": "abababababababababababababababababababababababababababababababab"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "double-encoded JSON",
+   "refuse": true,
+   "meta": {
+    "blob": "\"{\\\"x\\\": 1, \\\"y\\\": \\\"abababababababababababababababababababababababababababababababab\\\"}\""
+   }
+  },
+  {
+   "name": "renamed field of shares",
+   "refuse": true,
+   "meta": {
+    "myShares": [
+     {
+      "x": "1",
+      "y": "abababababababababababababababababababababababababababababababab"
+     }
+    ]
+   }
+  },
+  {
+   "name": "wrapped share record",
+   "refuse": true,
+   "meta": {
+    "w": {
+     "holderPublicKey": "021111111111111111111111111111111111111111111111111111111111111111",
+     "envelope": "{}"
+    }
+   }
+  },
+  {
+   "name": "wrapped share record snake",
+   "refuse": true,
+   "meta": {
+    "w": {
+     "holder_public_key": "021111111111111111111111111111111111111111111111111111111111111111",
+     "envelope": "{}"
+    }
+   }
+  },
+  {
+   "name": "deny-listed name",
+   "refuse": true,
+   "meta": {
+    "keyShares": []
+   }
+  },
+  {
+   "name": "coordinate x 1 y '10'",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": "10"
+   }
+  },
+  {
+   "name": "point ff",
+   "refuse": false,
+   "meta": {
+    "point": {
+     "x": 1,
+     "y": "ff"
+    }
+   }
+  },
+  {
+   "name": "theme x 0",
+   "refuse": false,
+   "meta": {
+    "theme": {
+     "x": 0,
+     "y": "abcdef"
+    }
+   }
+  },
+  {
+   "name": "float coordinates",
+   "refuse": false,
+   "meta": {
+    "x": 1.5,
+    "y": 2.5
+   }
+  },
+  {
+   "name": "15-byte y",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": "ababababababababababababababab"
+   }
+  },
+  {
+   "name": "x 0 with share-length y",
+   "refuse": false,
+   "meta": {
+    "x": 0,
+    "y": "abababababababababababababababababababababababababababababababab"
+   }
+  },
+  {
+   "name": "x 256 with share-length y",
+   "refuse": false,
+   "meta": {
+    "x": 256,
+    "y": "abababababababababababababababababababababababababababababababab"
+   }
+  },
+  {
+   "name": "float x 1.5 with share-length y",
+   "refuse": false,
+   "meta": {
+    "x": 1.5,
+    "y": "abababababababababababababababababababababababababababababababab"
+   }
+  },
+  {
+   "name": "x 'one'",
+   "refuse": false,
+   "meta": {
+    "x": "one",
+    "y": "abababababababababababababababababababababababababababababababab"
+   }
+  },
+  {
+   "name": "x ' 12'",
+   "refuse": false,
+   "meta": {
+    "x": " 12",
+    "y": "abababababababababababababababababababababababababababababababab"
+   }
+  },
+  {
+   "name": "x list",
+   "refuse": false,
+   "meta": {
+    "x": [
+     5
+    ],
+    "y": "abababababababababababababababababababababababababababababababab"
+   }
+  },
+  {
+   "name": "y list",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": [
+     "abababababababababababababababababababababababababababababababab"
+    ]
+   }
+  },
+  {
+   "name": "plain text y",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": "hello world, this is not hex at all!"
+   }
+  },
+  {
+   "name": "short hex run with junk",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": "abababababababababababababababzzababababababababababababababab"
+   }
+  },
+  {
+   "name": "model hash field",
+   "refuse": false,
+   "meta": {
+    "model_hash": "abababababababababababababababababababababababababababababababab"
+   }
+  },
+  {
+   "name": "envelope only",
+   "refuse": false,
+   "meta": {
+    "envelope": "e"
+   }
+  },
+  {
+   "name": "json text array",
+   "refuse": false,
+   "meta": {
+    "text": "[1, 2, 3]"
+   }
+  },
+  {
+   "name": "non-json string",
+   "refuse": false,
+   "meta": {
+    "blob": "{not json"
+   }
+  }
+ ]
+}

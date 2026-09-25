@@ -15,13 +15,20 @@ Mirrors sdk/javascript/src/learning.ts exactly (method names in snake_case).
 
 from __future__ import annotations
 
+import re
 import secrets
+import warnings
 from typing import Any, cast
 
 from eth_abi import decode as abi_decode
+from eth_abi import encode as abi_encode
+from eth_account import Account
+from eth_account.messages import encode_defunct
+from eth_account.signers.local import LocalAccount
+from eth_utils import keccak
 
 from ._chain_guard import expected_chain_id, pinned_send
-from .abi import AbiInterface, enum_index, from_wei, keccak256_text, to_wei
+from .abi import AbiInterface, enum_index, from_wei, to_wei
 from .errors import ConfigurationError
 from .types import (
     ClassroomInfo,
@@ -95,13 +102,48 @@ LIQUID_STAKING_ABI = [
     "function nextWithdrawalId() view returns (uint256)",
 ]
 
+#: Domain tag of the enrolment proof (ClassroomRegistry.ENROLL_TAG).
+_ENROLL_TAG = keccak(b"CitrateClassroomRegistry.Enroll.v1")
+_ZERO_ADDRESS = "0x" + "00" * 20
+
+
+#: secp256k1 group order; a private key must be in [1, n).
+_SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+
+def _invite_account(invite_secret: str) -> LocalAccount:
+    """Parse an invite secret (a 32-byte secp256k1 key as 0x-hex).
+
+    The range is checked here rather than left to the installed eth-keys
+    version, and any parse failure is reported as ValueError.
+    """
+    if not isinstance(invite_secret, str) or not re.fullmatch(r"0x[0-9a-fA-F]{64}", invite_secret):
+        raise ValueError(
+            "invite secret must be a 0x-prefixed 32-byte key (the classroom invite is a key pair; "
+            "use the value ClassroomManager.create / rotate_invite_code returned)"
+        )
+    if not 1 <= int(invite_secret, 16) < _SECP256K1_N:
+        raise ValueError("invite secret is out of range for a secp256k1 key")
+    try:
+        return cast(LocalAccount, Account.from_key(invite_secret))
+    except Exception as e:  # eth-keys raises different types across versions
+        raise ValueError(f"invite secret is not a valid secp256k1 key: {e}") from None
+
+
+def _invite_commitment(invite_key: str) -> bytes:
+    """keccak256(abi.encodePacked(inviteKey)): the on-chain invite commitment."""
+    return keccak(bytes.fromhex(invite_key[2:]))
+
+
 _CLASSROOM_TUPLE = "(address,string,uint256,uint256,uint256,bool)"
 
 CLASSROOM_REGISTRY_ABI = [
     "function createClassroom(string name, uint256 maxStudents, bytes32 inviteCodeHash)",
-    # PBA-L6b-040: CHAIN-B-C009 changed this to take the raw code and hash it
-    # on-chain; the old bytes32 selector no longer exists on the contract.
-    "function enrollWithCode(bytes inviteCode)",
+    # citrate-chain #222 (d89200c2): invites are key pairs. The student submits
+    # the invite key (an address) and the invite secret's signature over
+    # enrollmentDigest(teacher, student, inviteCodeHash); enrollWithCode is gone.
+    "function enrollWithInvite(address inviteKey, bytes signature)",
+    "function codeToTeacher(bytes32 inviteCodeHash) view returns (address)",
     "function unenroll()",
     "function removeStudent(address student)",
     "function whitelistModel(bytes32 modelHash)",
@@ -668,9 +710,9 @@ class ClassroomManager(_RpcMixin):
         self._gas_price = gas_price
         self._classroom_address = classroom_address
         self._iface = AbiInterface(CLASSROOM_REGISTRY_ABI)
-        #: The invite code used by the most recent ``create`` call (generated
-        #: when none was passed). Only its hash goes on-chain; share the code
-        #: with students out of band.
+        #: The invite secret from the most recent ``create`` /
+        #: ``rotate_invite_code`` call. Only the invite key's commitment goes
+        #: on-chain; share the secret with students out of band.
         self.last_invite_code: str | None = None
 
     def _require_address(self) -> str:
@@ -678,49 +720,79 @@ class ClassroomManager(_RpcMixin):
             raise ConfigurationError("ClassroomRegistry contract address not configured.")
         return self._classroom_address
 
+    def _new_invite(self, invite_code: str | None) -> bytes:
+        secret = invite_code if invite_code is not None else "0x" + secrets.token_bytes(32).hex()
+        account = _invite_account(secret)
+        self.last_invite_code = secret
+        return _invite_commitment(account.address)
+
     def create(self, name: str, max_students: int, invite_code: str | None = None) -> str:
         """Create a new classroom.
 
         Data source: ClassroomRegistry.createClassroom(string, uint256, bytes32) via eth_sendTransaction.
 
+        The invite is a key pair (citrate-chain #222): only the commitment
+        ``keccak256(abi.encodePacked(inviteKey))`` goes on-chain. The invite
+        secret is left in ``last_invite_code``; share it with students out of
+        band.
+
         Args:
             name: Classroom display name.
             max_students: Maximum enrollment capacity.
-            invite_code: Plain-text invite code (only its keccak256 goes on-chain).
-                If omitted, a random 128-bit code is generated
-                (``secrets.token_urlsafe(16)``) and left in ``last_invite_code``.
+            invite_code: Optional invite secret (0x-prefixed 32-byte key). A
+                fresh random one is generated if omitted. Plain-text codes are
+                no longer accepted.
 
         Returns:
             Transaction hash.
         """
         addr = self._require_address()
-        # PBA-L6b-028: the old default was ``classroom-<ms timestamp>``; its hash
-        # is public at createClassroom and the block timestamp bounds the
-        # window, so it fell to a sub-second brute force.
-        code = invite_code or secrets.token_urlsafe(16)
-        self.last_invite_code = code
-        code_hash = keccak256_text(code)
-        code_hash_bytes = bytes.fromhex(code_hash[2:])
+        commitment = self._new_invite(invite_code)
         data = self._iface.encode_function_data("createClassroom", [
-            name, max_students, code_hash_bytes,
+            name, max_students, commitment,
         ])
         return self._send_transaction(addr, data)
 
-    def enroll(self, invite_code: str) -> str:
-        """Enroll as a student in a classroom using an invite code.
+    def enroll_with_invite(self, invite_secret: str) -> str:
+        """Enroll the configured account using the classroom's invite secret.
 
-        Data source: ClassroomRegistry.enrollWithCode(bytes) via eth_sendTransaction.
-        The contract hashes the raw code itself (CHAIN-B-C009, PBA-L6b-040).
+        Data source: ClassroomRegistry.enrollWithInvite(address, bytes) via eth_sendTransaction.
 
-        Args:
-            invite_code: Plain-text invite code provided by teacher.
-
-        Returns:
-            Transaction hash.
+        Signs ``enrollmentDigest(teacher, student, inviteCodeHash)`` (EIP-191)
+        with the invite secret locally. Only the invite key (an address) and the
+        signature go on-chain, and the signature is bound to this student,
+        this registry and the pinned chain id.
         """
         addr = self._require_address()
-        data = self._iface.encode_function_data("enrollWithCode", [invite_code.encode("utf-8")])
+        if not self._default_account:
+            raise ConfigurationError("defaultAccount not configured; required for write operations.")
+        account = _invite_account(invite_secret)
+        commitment = _invite_commitment(account.address)
+        raw = self._eth_call(addr, self._iface.encode_function_data("codeToTeacher", [commitment]))
+        (teacher,) = self._iface.decode_function_result("codeToTeacher", raw)
+        if not teacher or str(teacher).lower() == _ZERO_ADDRESS:
+            raise ValueError("this invite secret is not an active invite on the registry (unknown or rotated)")
+        digest = keccak(abi_encode(
+            ["bytes32", "uint256", "address", "address", "address", "bytes32"],
+            [_ENROLL_TAG, self._expected_chain_id, addr, teacher, self._default_account, commitment],
+        ))
+        signature = account.sign_message(encode_defunct(primitive=digest)).signature
+        data = self._iface.encode_function_data("enrollWithInvite", [account.address, bytes(signature)])
         return self._send_transaction(addr, data)
+
+    def enroll(self, invite_code: str) -> str:
+        """Deprecated: use :meth:`enroll_with_invite`.
+
+        The registry no longer accepts a raw invite code (citrate-chain #222).
+        This forwards to ``enroll_with_invite`` when given an invite secret and
+        raises ``ValueError`` for anything else.
+        """
+        warnings.warn(
+            "ClassroomManager.enroll is deprecated; use enroll_with_invite(invite_secret)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.enroll_with_invite(invite_code)
 
     def unenroll(self) -> str:
         """Unenroll from current classroom (student-initiated).
@@ -768,21 +840,22 @@ class ClassroomManager(_RpcMixin):
         data = self._iface.encode_function_data("removeModel", [hash_bytes])
         return self._send_transaction(addr, data)
 
-    def rotate_invite_code(self, new_invite_code: str) -> str:
-        """Rotate the classroom's invite code (teacher only).
+    def rotate_invite_code(self, new_invite_code: str | None = None) -> str:
+        """Rotate the classroom's invite (teacher only).
 
         Data source: ClassroomRegistry.rotateInviteCode(bytes32) via eth_sendTransaction.
 
         Args:
-            new_invite_code: New plain-text invite code.
+            new_invite_code: Optional new invite secret (0x-prefixed 32-byte
+                key); a fresh one is generated if omitted and left in
+                ``last_invite_code``.
 
         Returns:
             Transaction hash.
         """
         addr = self._require_address()
-        code_hash = keccak256_text(new_invite_code)
-        code_hash_bytes = bytes.fromhex(code_hash[2:])
-        data = self._iface.encode_function_data("rotateInviteCode", [code_hash_bytes])
+        commitment = self._new_invite(new_invite_code)
+        data = self._iface.encode_function_data("rotateInviteCode", [commitment])
         return self._send_transaction(addr, data)
 
     def get_classroom(self, teacher_address: str) -> ClassroomInfo:
