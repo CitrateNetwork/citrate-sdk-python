@@ -541,6 +541,7 @@ dependencies = [
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "requests" },
     { name = "typing-extensions" },
+    { name = "urllib3" },
     { name = "web3" },
 ]
 
@@ -591,6 +592,7 @@ requires-dist = [
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=1.0" },
     { name = "tomli", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "typing-extensions", specifier = "~=4.0" },
+    { name = "urllib3", specifier = ">=2.0,<3" },
     { name = "web3", specifier = "~=7.15" },
 ]
 provides-extras = ["dev", "docs"]

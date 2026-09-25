@@ -55,6 +55,9 @@ classifiers = [
 # HKDF envelope (crypto.py) and RSA ID-token verification (identity/jwt.py).
 dependencies = [
     "requests~=2.33",
+    # PBA-L6b-026: the transport gate parses URLs with urllib3 (what requests
+    # connects with) to rule out parser differentials; pinned explicitly.
+    "urllib3>=2.0,<3",
     "cryptography>=48.0.1,<51",
     "eth-account~=0.9",
     "web3~=7.15",
