@@ -7,9 +7,10 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
 
 ### Changed
 
-- `deploy_model` serialises the transaction payload once, runs the key-share
-  guard on the parsed form of those exact bytes, and sends the same bytes.
+- `deploy_model` serialises the transaction payload once, guards those exact
+  bytes (duplicate object keys are refused), and sends the same bytes.
   `_send_transaction` accepts an already-serialised JSON payload.
+- The key-share guard recognises byte values and their JSON renderings.
 
 ### Tests
 
