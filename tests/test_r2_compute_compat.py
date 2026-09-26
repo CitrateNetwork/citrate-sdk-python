@@ -437,3 +437,40 @@ def test_nothing_to_claim_names_the_source(claim: str, args: tuple[int, ...], ne
 def test_effective_tier_rejects_unknown_tier() -> None:
     with pytest.raises(ValueError, match="tier"):
         effective_tier("zkp", 0)
+
+
+# --------------------------------------------------------------------------
+# user-facing error messages (the caller acts on these)
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("value", "needle"),
+    [
+        ("0xzz", "input_commitment is not hex"),
+        ("0x" + "01" * 31, "input_commitment must be exactly 32 bytes, got 31"),
+        ("0x" + "00" * 32, "input_commitment must be a non-zero BN254 scalar"),
+    ],
+)
+def test_bad_commitment_messages_name_the_argument(value: str, needle: str) -> None:
+    with pytest.raises(ZKCommitmentError) as ei:
+        _mgr(Rpc()).post_job(MODEL, "x", "1", "ZK", input_commitment=value)
+    assert needle in str(ei.value)
+
+
+def test_missing_commitment_message_explains_the_zk_rule() -> None:
+    with pytest.raises(ZKCommitmentError) as ei:
+        _mgr(Rpc()).post_job(MODEL, "x", "11", "Commitment")
+    msg = str(ei.value)
+    assert "ZK tier" in msg and "'Commitment' above 10 SALT" in msg
+    assert "input_commitment" in msg and "BN254" in msg
+
+
+def test_commitment_on_non_zk_job_message() -> None:
+    with pytest.raises(ZKCommitmentError, match="only used for ZK-tier jobs"):
+        _mgr(Rpc()).post_job(MODEL, "x", "1", "Commitment", input_commitment=COMMIT)
+
+
+def test_zk_model_hash_message() -> None:
+    at_r = "0x" + BN254_SCALAR_MODULUS.to_bytes(32, "big").hex()
+    with pytest.raises(ZKCommitmentError, match="model_hash must be below the BN254 field modulus"):
+        _mgr(Rpc()).post_job(at_r, "x", "1", "ZK", input_commitment=COMMIT)
