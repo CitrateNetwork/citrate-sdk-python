@@ -59,7 +59,8 @@ def test_unknown_mode_raises() -> None:
 def test_known_tiers_encode_their_index(tier: str, index: int) -> None:
     sent: list[Any] = []
     mgr = ComputeManager(_rpc(sent), default_account=ACCT, contract_addresses=ADDRS)
-    mgr.post_job("0x" + "aa" * 32, "in", "1", tier)
+    commitment = "0x" + (1).to_bytes(32, "big").hex() if index == 1 else None
+    mgr.post_job("0x" + "0a" * 32, "in", "1", tier, input_commitment=commitment)
     data = bytes.fromhex(sent[-1][1][0]["data"][2:])
     # postJob(bytes32,bytes,uint256,uint8,...): tier is the 4th head word.
     assert int.from_bytes(data[4 + 96: 4 + 128], "big") == index

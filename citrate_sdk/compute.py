@@ -25,7 +25,7 @@ from typing import Any, cast
 
 from ._chain_guard import expected_chain_id, pinned_send
 from .abi import AbiInterface, enum_index, from_wei, to_wei
-from .errors import ConfigurationError
+from .errors import CitrateError, ConfigurationError, ValidationError
 from .types import ComputeJob, ComputePool, Dispute, ProviderInfo
 
 # ============================================================================
@@ -47,6 +47,26 @@ COMPUTE_POOL_ABI = [
     "function createPool(string name, uint8 mode, uint256 minProviders, uint256 throughput, uint256 price) payable returns (uint256 poolId)",
     "function joinPool(uint256 poolId, uint256 gpuCount) payable",
     "function leavePool(uint256 poolId)",
+    "function requestLeave(uint256 poolId)",
+    "function leaveRequestedAt(uint256 poolId, address provider) view returns (uint256)",
+]
+
+# ComputeMarketplace: native escrow refunds that could not be pushed.
+MARKETPLACE_REFUND_ABI = [
+    "function nativeRefundOwed(address requester) view returns (uint256)",
+    "function claimNativeRefund()",
+]
+
+# InferenceRouter: refunds credited on cancel / expiry.
+INFERENCE_ROUTER_REFUND_ABI = [
+    "function refundOwed(address requester) view returns (uint256)",
+    "function claimRefund()",
+]
+
+# ComputePoolTraining: requester escrow refunds deferred at finalize.
+TRAINING_REFUND_ABI = [
+    "function requesterRefundPending(uint256 jobId) view returns (uint128)",
+    "function claimRequesterRefund(uint256 jobId)",
 ]
 
 DISPUTE_ABI = [
@@ -64,6 +84,70 @@ POOL_MODES = ("InferencePool", "DataParallel", "PipelineParallel")
 POOL_STATES = ("Active", "Paused", "Dissolved")
 DISPUTE_STATES = ("Open", "ChallengerWins", "DefenderWins", "Settled")
 DISPUTE_OUTCOMES = ("Pending", "ChallengerWins", "DefenderWins", "Draw")
+
+#: BN254 scalar field modulus (ComputeVerifier.BN254_SCALAR_MODULUS).
+BN254_SCALAR_MODULUS = (
+    21888242871839275222246405745257275088548364400416034343698204186575808495617
+)
+#: ComputeVerifier.VALUE_THRESHOLD: a Commitment-tier request whose maxPrice is
+#: strictly above this is verified under the ZK tier.
+ZK_AUTO_UPGRADE_THRESHOLD_WEI = 10 * 10**18
+#: ComputePool.LEAVE_COOLDOWN: blocks between requestLeave and leavePool.
+LEAVE_COOLDOWN_BLOCKS = 150
+#: ComputeMarketplace.DISPUTE_WINDOW: blocks after a Valid verification before
+#: completeJob is accepted.
+DISPUTE_WINDOW_BLOCKS = 100
+
+
+class ZKCommitmentError(ValidationError):
+    """A ZK-tier job needs a canonical 32-byte BN254 input commitment."""
+
+
+class LeaveNotReadyError(CitrateError):
+    """leavePool would revert: the LEAVE_COOLDOWN has not elapsed yet."""
+
+    def __init__(self, pool_id: int, executable_at: int, current_block: int) -> None:
+        self.pool_id = pool_id
+        self.executable_at = executable_at
+        self.current_block = current_block
+        super().__init__(
+            f"pool {pool_id}: leave cooldown ends at block {executable_at} "
+            f"(current block {current_block})"
+        )
+
+
+class NothingToClaimError(CitrateError):
+    """The claim would revert: nothing is owed to the caller."""
+
+
+def effective_tier(tier: str, max_price_wei: int) -> str:
+    """The tier ComputeVerifier settles a job under.
+
+    A Commitment request above ZK_AUTO_UPGRADE_THRESHOLD_WEI is verified as ZK;
+    every other request keeps its tier.
+    """
+    name = JOB_TIERS[enum_index(JOB_TIERS, tier, "tier")]
+    if name == "Commitment" and max_price_wei > ZK_AUTO_UPGRADE_THRESHOLD_WEI:
+        return "ZK"
+    return name
+
+
+def _canonical_field_element(value: str | bytes, what: str) -> bytes:
+    """Return ``value`` as 32 bytes if it is a non-zero BN254 scalar < r."""
+    if isinstance(value, bytes):
+        raw = value
+    else:
+        text = value[2:] if value.startswith(("0x", "0X")) else value
+        try:
+            raw = bytes.fromhex(text)
+        except ValueError as exc:
+            raise ZKCommitmentError(f"{what} is not hex") from exc
+    if len(raw) != 32:
+        raise ZKCommitmentError(f"{what} must be exactly 32 bytes, got {len(raw)}")
+    n = int.from_bytes(raw, "big")
+    if n == 0 or n >= BN254_SCALAR_MODULUS:
+        raise ZKCommitmentError(f"{what} must be a non-zero BN254 scalar below the field modulus")
+    return raw
 
 
 # ============================================================================
@@ -102,8 +186,16 @@ class ComputeManager:
         self._compute_addr = addrs.get("computePool")
         self._dispute_addr = addrs.get("disputeResolution")
 
+        # ComputeMarketplace hosts postJob; older configs point computePool at it.
+        self._marketplace_addr = addrs.get("computeMarketplace") or self._compute_addr
+        self._router_addr = addrs.get("inferenceRouter")
+        self._training_addr = addrs.get("computePoolTraining")
+
         self._compute_iface = AbiInterface(COMPUTE_POOL_ABI)
         self._dispute_iface = AbiInterface(DISPUTE_ABI)
+        self._market_refund_iface = AbiInterface(MARKETPLACE_REFUND_ABI)
+        self._router_refund_iface = AbiInterface(INFERENCE_ROUTER_REFUND_ABI)
+        self._training_refund_iface = AbiInterface(TRAINING_REFUND_ABI)
 
     # --- Internal helpers ---
 
@@ -120,6 +212,42 @@ class ComputeManager:
                 "DisputeResolution contract address not configured. Set it via contract_addresses."
             )
         return self._dispute_addr
+
+    def _require_marketplace_address(self) -> str:
+        if not self._marketplace_addr:
+            raise ConfigurationError(
+                "ComputeMarketplace contract address not configured. Set computeMarketplace "
+                "(or computePool) via contract_addresses."
+            )
+        return self._marketplace_addr
+
+    def _require_router_address(self) -> str:
+        if not self._router_addr:
+            raise ConfigurationError(
+                "InferenceRouter contract address not configured. Set it via contract_addresses."
+            )
+        return self._router_addr
+
+    def _require_training_address(self) -> str:
+        if not self._training_addr:
+            raise ConfigurationError(
+                "ComputePoolTraining contract address not configured. Set it via contract_addresses."
+            )
+        return self._training_addr
+
+    def _account(self, address: str | None) -> str:
+        who = address or self._default_account
+        if not who:
+            raise ConfigurationError("No address provided and no defaultAccount configured.")
+        return who
+
+    def _block_number(self) -> int:
+        return int(cast(str, self._rpc_call("eth_blockNumber", [])), 16)
+
+    def _read_uint(self, iface: AbiInterface, to: str, fn: str, args: list[Any]) -> int:
+        result = self._eth_call(to, iface.encode_function_data(fn, args))
+        (value,) = iface.decode_function_result(fn, result)
+        return int(value)
 
     def _eth_call(self, to: str, data: str) -> str:
         result = self._rpc_call("eth_call", [{"to": to, "data": data}, "latest"])
@@ -148,26 +276,52 @@ class ComputeManager:
         input_data: str,
         max_price: str,
         tier: str,
+        *,
+        input_commitment: str | bytes | None = None,
     ) -> str:
         """Post a new compute job to the marketplace.
 
-        Data source: ComputePool.postJob() via eth_sendTransaction with msg.value.
+        Data source: ComputeMarketplace.postJob() via eth_sendTransaction with msg.value.
 
         Args:
             model_hash: 32-byte model hash (hex string, optional 0x prefix).
-            input_data: UTF-8 input payload for the compute job.
+            input_data: UTF-8 input payload for the compute job. Posted as
+                ``inputHash`` for Commitment and TEE jobs; for ZK jobs the input
+                is delivered off-chain and only ``input_commitment`` is posted.
             max_price: Maximum price in ether-denominated decimal string.
             tier: One of 'Commitment', 'ZK', 'TEE'.
+            input_commitment: Required when the job is verified under the ZK
+                tier (tier 'ZK', or 'Commitment' above 10 SALT): the inference
+                circuit's 32-byte input commitment, a non-zero BN254 scalar
+                below the field modulus, produced by the prover tooling. A hash
+                of the raw input is not accepted by the verifier.
 
         Returns:
             Transaction hash (job ID emitted in JobPosted event).
+
+        Raises:
+            ZKCommitmentError: ZK job without a canonical commitment, a
+                non-canonical model hash on a ZK job, or a commitment passed
+                for a non-ZK job. Raised before any transaction is sent.
         """
-        addr = self._require_compute_address()
+        addr = self._require_marketplace_address()
         h = model_hash if model_hash.startswith("0x") else f"0x{model_hash}"
         hash_bytes = bytes.fromhex(h[2:])
         tier_num = enum_index(JOB_TIERS, tier, "tier")
         max_price_wei = to_wei(max_price)
-        input_bytes = input_data.encode("utf-8")
+        if effective_tier(tier, max_price_wei) == "ZK":
+            if input_commitment is None:
+                raise ZKCommitmentError(
+                    "this job is verified under the ZK tier (tier 'ZK', or 'Commitment' above "
+                    "10 SALT): pass input_commitment, the circuit's 32-byte BN254 input commitment"
+                )
+            input_bytes = _canonical_field_element(input_commitment, "input_commitment")
+            if int.from_bytes(hash_bytes, "big") >= BN254_SCALAR_MODULUS:
+                raise ZKCommitmentError("model_hash must be below the BN254 field modulus for a ZK job")
+        elif input_commitment is not None:
+            raise ZKCommitmentError("input_commitment is only used for ZK-tier jobs")
+        else:
+            input_bytes = input_data.encode("utf-8")
         data = self._compute_iface.encode_function_data("postJob", [
             hash_bytes, input_bytes, max_price_wei, tier_num, 50, 100,
         ])
@@ -376,31 +530,83 @@ class ComputeManager:
         ])
         return self._send_transaction(addr, data)
 
-    def join_pool(self, pool_id: int, gpu_count: int) -> str:
+    def join_pool(self, pool_id: int, gpu_count: int, *, stake: str | None = None) -> str:
         """Join a compute pool with GPU allocation.
 
-        Data source: ComputePool.joinPool() via eth_sendTransaction.
+        Data source: ComputePool.joinPool() via eth_sendTransaction with msg.value.
 
         Args:
             pool_id: The pool identifier.
             gpu_count: Number of GPUs to allocate.
+            stake: SALT staked with the membership, as a decimal string. The
+                pool requires at least ``gpu_count * MIN_STAKE_PER_GPU``
+                (10 SALT per GPU); without it the join reverts.
 
         Returns:
             Transaction hash.
         """
         addr = self._require_compute_address()
         data = self._compute_iface.encode_function_data("joinPool", [pool_id, gpu_count])
-        return self._send_transaction(addr, data)
+        value = hex(to_wei(stake)) if stake is not None else "0x0"
+        return self._send_transaction(addr, data, value)
 
-    def leave_pool(self, pool_id: int) -> str:
-        """Leave a compute pool and reclaim stake.
+    def request_leave(self, pool_id: int) -> str:
+        """Start leaving a compute pool (step 1 of 2).
 
-        Data source: ComputePool.leavePool() via eth_sendTransaction.
+        Data source: ComputePool.requestLeave() via eth_sendTransaction. The
+        member stays active and slashable until ``leavePool`` completes the
+        exit, which is accepted LEAVE_COOLDOWN_BLOCKS blocks later.
 
         Returns:
             Transaction hash.
         """
         addr = self._require_compute_address()
+        data = self._compute_iface.encode_function_data("requestLeave", [pool_id])
+        return self._send_transaction(addr, data)
+
+    def leave_status(self, pool_id: int, address: str | None = None) -> dict[str, Any]:
+        """Pending-exit state for ``address`` (default account) in ``pool_id``.
+
+        Data source: ComputePool.leaveRequestedAt(uint256,address) + eth_blockNumber.
+
+        Returns:
+            ``{"requested_at": int, "executable_at": int | None, "ready": bool}``;
+            ``requested_at`` is 0 when no exit is pending.
+        """
+        addr = self._require_compute_address()
+        who = self._account(address)
+        requested_at = self._read_uint(
+            self._compute_iface, addr, "leaveRequestedAt", [pool_id, who]
+        )
+        if requested_at == 0:
+            return {"requested_at": 0, "executable_at": None, "ready": False}
+        executable_at = requested_at + LEAVE_COOLDOWN_BLOCKS
+        return {
+            "requested_at": requested_at,
+            "executable_at": executable_at,
+            "ready": self._block_number() >= executable_at,
+        }
+
+    def leave_pool(self, pool_id: int) -> str:
+        """Leave a compute pool and reclaim stake (two-step exit).
+
+        Data source: ComputePool.leaveRequestedAt / requestLeave / leavePool.
+
+        * No exit pending: sends ``requestLeave`` (step 1) and returns its hash.
+          Call again once the cooldown has elapsed.
+        * Exit pending and LEAVE_COOLDOWN_BLOCKS elapsed: sends ``leavePool``.
+        * Exit pending inside the cooldown: raises LeaveNotReadyError (no
+          transaction is sent).
+
+        Returns:
+            Transaction hash.
+        """
+        addr = self._require_compute_address()
+        status = self.leave_status(pool_id)
+        if status["requested_at"] == 0:
+            return self.request_leave(pool_id)
+        if not status["ready"]:
+            raise LeaveNotReadyError(pool_id, status["executable_at"], self._block_number())
         data = self._compute_iface.encode_function_data("leavePool", [pool_id])
         return self._send_transaction(addr, data)
 
@@ -454,6 +660,83 @@ class ComputeManager:
                 continue
 
         return pools
+
+    # -------------------------------------------------------------------
+    # Refund claims
+    # -------------------------------------------------------------------
+
+    def refund_owed(self, address: str | None = None) -> int:
+        """Wei credited to ``address`` (default account) by InferenceRouter.
+
+        Data source: InferenceRouter.refundOwed(address) via eth_call.
+        """
+        return self._read_uint(
+            self._router_refund_iface, self._require_router_address(), "refundOwed",
+            [self._account(address)],
+        )
+
+    def claim_refund(self) -> str:
+        """Withdraw InferenceRouter refunds credited to the default account.
+
+        Data source: InferenceRouter.claimRefund() via eth_sendTransaction.
+
+        Raises:
+            NothingToClaimError: nothing is owed (the call would revert).
+        """
+        addr = self._require_router_address()
+        if self.refund_owed() == 0:
+            raise NothingToClaimError("InferenceRouter: no refund owed")
+        return self._send_transaction(addr, self._router_refund_iface.encode_function_data("claimRefund"))
+
+    def native_refund_owed(self, address: str | None = None) -> int:
+        """Wei of job escrow refunds ComputeMarketplace could not push to ``address``.
+
+        Data source: ComputeMarketplace.nativeRefundOwed(address) via eth_call.
+        """
+        return self._read_uint(
+            self._market_refund_iface, self._require_marketplace_address(), "nativeRefundOwed",
+            [self._account(address)],
+        )
+
+    def claim_native_refund(self) -> str:
+        """Withdraw ComputeMarketplace escrow refunds owed to the default account.
+
+        Data source: ComputeMarketplace.claimNativeRefund() via eth_sendTransaction.
+
+        Raises:
+            NothingToClaimError: nothing is owed (the call would revert).
+        """
+        addr = self._require_marketplace_address()
+        if self.native_refund_owed() == 0:
+            raise NothingToClaimError("ComputeMarketplace: no native refund owed")
+        return self._send_transaction(
+            addr, self._market_refund_iface.encode_function_data("claimNativeRefund")
+        )
+
+    def requester_refund_pending(self, job_id: int) -> int:
+        """Wei of a training job's requester escrow refund deferred at finalize.
+
+        Data source: ComputePoolTraining.requesterRefundPending(uint256) via eth_call.
+        """
+        return self._read_uint(
+            self._training_refund_iface, self._require_training_address(),
+            "requesterRefundPending", [job_id],
+        )
+
+    def claim_requester_refund(self, job_id: int) -> str:
+        """Claim a training job's deferred requester refund (requester only).
+
+        Data source: ComputePoolTraining.claimRequesterRefund(uint256) via eth_sendTransaction.
+
+        Raises:
+            NothingToClaimError: nothing is pending for the job (the call would revert).
+        """
+        addr = self._require_training_address()
+        if self.requester_refund_pending(job_id) == 0:
+            raise NothingToClaimError(f"ComputePoolTraining: no refund pending for job {job_id}")
+        return self._send_transaction(
+            addr, self._training_refund_iface.encode_function_data("claimRequesterRefund", [job_id])
+        )
 
     # -------------------------------------------------------------------
     # Disputes
