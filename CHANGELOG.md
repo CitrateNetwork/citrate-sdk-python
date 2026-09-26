@@ -3,6 +3,20 @@
 All notable changes to `citrate-labs-sdk` are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.3] - 2026-09-25 — Hardening
+
+### Changed
+
+- `deploy_model` serialises the transaction payload once, guards those exact
+  bytes (duplicate object keys are refused), and sends the same bytes.
+  `_send_transaction` accepts an already-serialised JSON payload.
+- The key-share guard recognises byte values and their JSON renderings.
+
+### Tests
+
+- A differential property test runs the share guard against the strict share
+  parser and other known hex decoders over generated near-hex input.
+
 ## [0.6.2] - 2026-09-25 — Pre-bounty audit remediation (SECURITY)
 
 > **Security advisory: upgrade from 0.6.0 (and any unreleased 0.6.1 build).**
