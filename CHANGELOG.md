@@ -11,6 +11,10 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
   bytes (duplicate object keys are refused), and sends the same bytes.
   `_send_transaction` accepts an already-serialised JSON payload.
 - The key-share guard recognises byte values and their JSON renderings.
+- The key-share guard also accepts whole-number floats and signed values as
+  byte values, matches the Buffer JSON shape whatever other keys are present,
+  and treats uppercase `X`/`Y` like `x`/`y`. It is a safety net against
+  accidental inclusion; the SDK never places key shares in metadata itself.
 
 ### Tests
 

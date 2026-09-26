@@ -76,6 +76,10 @@ print(gw.chat_completions(
 Runnable examples live in `examples/` (`basic_usage.py`, `encrypted_inference.py`,
 `marketplace_demo.py`). Verify it's up: `get_chain_id()` returning `40204` confirms the RPC.
 
+`deploy_model` never places key shares in deployment metadata; its key-share check on
+caller-supplied metadata is a safety net against accidental inclusion, not a guarantee
+against deliberately re-encoded data.
+
 > Security: the client warns/fails on a remote plaintext `http://` RPC (keys and signed
 > transactions would go out in cleartext). Loopback `http://` is always allowed; pass
 > `allow_insecure_http=True` for a trusted TLS-less internal host.

@@ -26,7 +26,7 @@ from citrate_sdk.learning import ClassroomManager
 
 SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 VECTORS = Path(__file__).parent / "fixtures" / "share_guard_vectors.json"
-VECTORS_SHA256 = "8f336f469be58046e7984bf61756d513df9ba497aca8feb9fc8641e2c6a4b805"
+VECTORS_SHA256 = "674d35d72f4fca132e59e325efec3a61fcb4cbe7d6cfc5afd85d1821afcf884f"
 
 
 def _mgr() -> tuple[ClassroomManager, list[Any]]:
@@ -135,3 +135,21 @@ def test_shared_raw_payloads(vec: dict[str, Any]) -> None:
             crypto.assert_payload_has_no_key_share_material(vec["text"])
     else:
         crypto.assert_payload_has_no_key_share_material(vec["text"])
+
+
+@pytest.mark.parametrize("y", [[171.0] * 32, [-85] * 32, {"type": "Buffer", "data": [171] * 32, "k": 1}])
+def test_byte_forms_refused_in_json_strings_too(y: Any) -> None:
+    with pytest.raises(CitrateError):
+        assert_no_key_share_material({"blob": json.dumps({"x": 1, "y": y})})
+    with pytest.raises(CitrateError):
+        assert_no_key_share_material({"blob": json.dumps({"X": 1, "Y": y})})
+
+
+@pytest.mark.parametrize("meta", [
+    {"x": "junk", "X": 1, "y": "ab" * 32},
+    {"x": 1, "y": "10", "Y": "ab" * 32},
+    {"X": 2, "y": "10", "Y": [171] * 32},
+])
+def test_mixed_case_keys_are_all_checked(meta: dict[str, Any]) -> None:
+    with pytest.raises(CitrateError):
+        assert_no_key_share_material({"a": meta})
