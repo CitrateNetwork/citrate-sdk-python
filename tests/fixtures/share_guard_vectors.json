@@ -1,6 +1,6 @@
 {
  "_comment": "Shared share-guard test vectors. The SAME file is committed to citrate-sdk-js and citrate-sdk-python (tests/fixtures/share_guard_vectors.json); each SDK's guard must refuse every refuse:true entry and accept every refuse:false entry. Keep the two copies byte-identical. raw_payloads are serialised payload texts for each SDK's payload guard (strict parse, then guard).",
- "version": 2,
+ "version": 3,
  "vectors": [
   {
    "name": "int x, 64-hex y",
@@ -751,6 +751,300 @@
      1,
      2
     ]
+   }
+  },
+  {
+   "name": "y as whole-number float list",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": [
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0,
+      171.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "JSON string with float byte list",
+   "refuse": true,
+   "meta": {
+    "blob": "{\"x\": 1, \"y\": [1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2, 1.71e2]}"
+   }
+  },
+  {
+   "name": "Buffer shape with an extra key",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": {
+      "type": "Buffer",
+      "data": [
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171
+      ],
+      "extra": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "y as signed byte list",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": [
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85,
+      -85
+     ]
+    }
+   }
+  },
+  {
+   "name": "uppercase X and Y",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "X": 1,
+     "Y": "abababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "uppercase X, lowercase y",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "X": "3",
+     "y": "abababababababababababababababababababababababababababababababab"
+    }
+   }
+  },
+  {
+   "name": "list with values below -128",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": [
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129,
+     -129
+    ]
+   }
+  },
+  {
+   "name": "list with fractional floats",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": [
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5,
+     171.5
+    ]
+   }
+  },
+  {
+   "name": "uppercase X and Y coordinates",
+   "refuse": false,
+   "meta": {
+    "X": 1,
+    "Y": "10"
+   }
+  },
+  {
+   "name": "Buffer shape with non-Buffer type",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": {
+     "type": "Other",
+     "data": [
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171
+     ]
+    }
    }
   }
  ],

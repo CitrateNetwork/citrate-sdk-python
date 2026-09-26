@@ -65,7 +65,13 @@ def _share_x(x: Any) -> bool:
 
 
 def _is_byte_int(v: Any) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 255
+    """A byte value as it may appear in JSON: a whole number in -128..255
+    (signed or unsigned), as an int or a whole-number float."""
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, float):
+        return v.is_integer() and -128 <= v <= 255
+    return isinstance(v, int) and -128 <= v <= 255
 
 
 def _bytes_like_len(y: Any) -> int:
@@ -77,7 +83,7 @@ def _bytes_like_len(y: Any) -> int:
     if isinstance(y, (list, tuple)):
         return len(y) if all(_is_byte_int(v) for v in y) else 0
     if isinstance(y, dict):
-        if set(y) == {"type", "data"} and y.get("type") == "Buffer":
+        if y.get("type") == "Buffer" and "data" in y:
             return _bytes_like_len(list(y["data"])) if isinstance(y.get("data"), list) else 0
         n = len(y)
         if n and all(isinstance(k, str) for k in y) and set(y) == {str(i) for i in range(n)}:
@@ -125,12 +131,14 @@ def _looks_like_share(d: dict[Any, Any]) -> bool:
     """A raw Shamir share ({x in 1..255, y of share length as hex or bytes})
     or a holder-wrapped share record ({holder_public_key/holderPublicKey,
     envelope}). Short or coordinate-like values are not treated as shares."""
-    y = d.get("y")
-    if "x" in d and _share_x(d["x"]):
-        if _bytes_like_len(y) >= _MIN_SHARE_BYTES:
-            return True
-        if isinstance(y, str) and _share_y_like(y):
-            return True
+    xs = [d[k] for k in ("x", "X") if k in d]
+    ys = [d[k] for k in ("y", "Y") if k in d]
+    if any(_share_x(x) for x in xs):
+        for y in ys:
+            if _bytes_like_len(y) >= _MIN_SHARE_BYTES:
+                return True
+            if isinstance(y, str) and _share_y_like(y):
+                return True
     return "envelope" in d and ("holder_public_key" in d or "holderPublicKey" in d)
 
 
