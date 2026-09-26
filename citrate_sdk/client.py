@@ -13,7 +13,11 @@ import requests
 
 from ._generated import contract as _contract
 from ._url_security import enforce_transport_security
-from .crypto import EncryptionConfig, KeyManager, assert_payload_has_no_key_share_material
+from .crypto import (
+    EncryptionConfig,
+    KeyManager,
+    assert_payload_has_no_key_share_material,
+)
 from .errors import CitrateError, ModelNotFoundError
 from .ipfs import upload_to_ipfs
 from .models import InferenceRequest, InferenceResult, ModelConfig, ModelDeployment
