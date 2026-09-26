@@ -13,6 +13,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      publish_version:
+        description: "Publish to PyPI from main: type the exact pyproject version (e.g. 0.6.2). Leave blank for a test+build dry run."
+        required: false
+        default: ""
 
 # Least-privilege default for all jobs.
 permissions:
@@ -90,7 +95,13 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    # A GitHub release publishes. A manual run publishes only from main, and
+    # only when the typed version matches pyproject.toml (checked below).
+    if: >-
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/main' &&
+       inputs.publish_version != '')
     # PyPI Trusted Publishing (OIDC): no API token. The PyPI project trusts
     # CitrateNetwork/citrate-sdk-python, workflow publish.yml.
     permissions:
@@ -103,6 +114,21 @@ jobs:
       with:
         name: dist
         path: dist/
+
+    - name: Built version matches the requested version
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        WANT: ${{ inputs.publish_version }}
+      run: |
+        ls dist/
+        n=0
+        for f in dist/*; do
+          case "$(basename "$f")" in
+            "citrate_labs_sdk-${WANT}-"*.whl|"citrate_labs_sdk-${WANT}.tar.gz") n=$((n+1)) ;;
+            *) echo "unexpected artifact $f for requested version $WANT"; exit 1 ;;
+          esac
+        done
+        test "$n" -ge 1 || { echo "no artifacts for version $WANT"; exit 1; }
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
