@@ -48,21 +48,39 @@ def _word(v: int) -> str:
     return "0x" + v.to_bytes(32, "big").hex()
 
 
+# Which contract answers each read selector. A read sent anywhere else fails.
+_READ_HOME = {
+    "leaveRequestedAt(uint256,address)": POOL,
+    "refundOwed(address)": ROUTER,
+    "nativeRefundOwed(address)": MARKET,
+    "requesterRefundPending(uint256)": TRAINING,
+}
+
+
 class Rpc:
     """eth_chainId + eth_blockNumber + per-selector eth_call answers; records sends."""
 
-    def __init__(self, calls: dict[str, int] | None = None, block: int = 1_000) -> None:
+    def __init__(self, calls: dict[str, int] | None = None, block: int = 1_000,
+                 chain_id: int | None = None) -> None:
         self.calls = calls or {}
         self.block = block
+        self.chain_id = chain_id if chain_id is not None else _contract.chain_id()
         self.sent: list[dict[str, Any]] = []
+        self.reads: list[dict[str, Any]] = []
+        self.homes = {_sel(k): v for k, v in _READ_HOME.items()}
 
     def __call__(self, method: str, params: list[Any]) -> Any:
+        assert isinstance(params, list), f"{method}: params must be a JSON array"
         if method == "eth_chainId":
-            return hex(_contract.chain_id())
+            return hex(self.chain_id)
         if method == "eth_blockNumber":
+            assert params == []
             return hex(self.block)
         if method == "eth_call":
-            sel = params[0]["data"][2:10]
+            call = params[0]
+            sel = call["data"][2:10]
+            assert call["to"] == self.homes[sel], f"read {sel} sent to {call['to']}"
+            self.reads.append(call)
             return _word(self.calls.get(sel, 0))
         if method == "eth_sendTransaction":
             self.sent.append(params[0])
@@ -308,3 +326,114 @@ def test_missing_refund_contract_addresses_raise() -> None:
         mgr.claim_refund()
     with pytest.raises(ConfigurationError, match="ComputePoolTraining"):
         mgr.claim_requester_refund(1)
+
+
+# --------------------------------------------------------------------------
+# argument / address plumbing
+# --------------------------------------------------------------------------
+
+def _head_words(tx: dict[str, Any]) -> list[int]:
+    data = bytes.fromhex(tx["data"][2:])[4:]
+    return [int.from_bytes(data[i: i + 32], "big") for i in range(0, len(data), 32)]
+
+
+def test_post_job_windows_and_unprefixed_model_hash() -> None:
+    rpc = Rpc()
+    _mgr(rpc).post_job(MODEL[2:], "x", "1", "Commitment")
+    w = _head_words(rpc.sent[-1])
+    assert w[0] == int(MODEL, 16)       # model hash, no 0x prefix given
+    assert w[3] == 0                    # tier
+    assert (w[4], w[5]) == (50, 100)    # bid / exec windows
+
+
+def test_post_job_default_gas_and_price() -> None:
+    rpc = Rpc()
+    _mgr(rpc).post_job(MODEL, "x", "1", "Commitment")
+    assert rpc.sent[-1]["gas"] == hex(500_000)
+    assert rpc.sent[-1]["gasPrice"] == "0x3b9aca00"
+
+
+def test_writes_refuse_a_foreign_chain() -> None:
+    from citrate_sdk.errors import CitrateError
+
+    rpc = Rpc(chain_id=1)
+    with pytest.raises(CitrateError):
+        _mgr(rpc).post_job(MODEL, "x", "1", "Commitment")
+    assert rpc.sent == []
+
+
+def test_explicit_chain_id_is_enforced() -> None:
+    from citrate_sdk.errors import CitrateError
+
+    rpc = Rpc(chain_id=_contract.chain_id())
+    mgr = ComputeManager(rpc, default_account=ACCT, contract_addresses={"computePool": POOL},
+                         chain_id=31337)
+    with pytest.raises(CitrateError):
+        mgr.request_leave(1)
+
+
+def test_zk_model_hash_equal_to_modulus_is_refused() -> None:
+    rpc = Rpc()
+    at_r = "0x" + BN254_SCALAR_MODULUS.to_bytes(32, "big").hex()
+    with pytest.raises(ZKCommitmentError, match="model_hash"):
+        _mgr(rpc).post_job(at_r, "x", "1", "ZK", input_commitment=COMMIT)
+    below = "0x" + (BN254_SCALAR_MODULUS - 1).to_bytes(32, "big").hex()
+    _mgr(rpc).post_job(below, "x", "1", "ZK", input_commitment=COMMIT)
+    assert len(rpc.sent) == 1
+
+
+@pytest.mark.parametrize("form", ["unprefixed", "upper"])
+def test_commitment_hex_forms(form: str) -> None:
+    rpc = Rpc()
+    body = (99).to_bytes(32, "big").hex()
+    value = body if form == "unprefixed" else "0X" + body
+    _mgr(rpc).post_job(MODEL, "x", "1", "ZK", input_commitment=value)
+    assert _posted_input_hash(rpc.sent[-1]) == (99).to_bytes(32, "big")
+
+
+def test_join_pool_sends_stake_to_the_pool() -> None:
+    rpc = Rpc()
+    _mgr(rpc).join_pool(3, 2, stake="20")
+    tx = rpc.sent[-1]
+    assert tx["to"] == POOL
+    assert int(tx["value"], 16) == to_wei("20")
+    assert tx["data"] == _iface.encode_function_data("joinPool", [3, 2])
+    _mgr(rpc).join_pool(3, 2)
+    assert rpc.sent[-1]["value"] == "0x0"
+
+
+def test_leave_pool_targets_the_pool_and_reports_blocks() -> None:
+    rpc = Rpc({LEAVE_REQ: 900}, block=1_060)
+    _mgr(rpc).leave_pool(9)
+    assert rpc.sent[-1]["to"] == POOL
+    rpc = Rpc({LEAVE_REQ: 900}, block=1_010)
+    with pytest.raises(LeaveNotReadyError) as ei:
+        _mgr(rpc).leave_pool(9)
+    assert (ei.value.pool_id, ei.value.executable_at, ei.value.current_block) == (9, 1_050, 1_010)
+    assert "1050" in str(ei.value) and "1010" in str(ei.value)
+
+
+def test_views_use_the_given_address() -> None:
+    other = "0x" + "33" * 20
+    rpc = Rpc({LEAVE_REQ: 0})
+    _mgr(rpc).leave_status(9, other)
+    assert rpc.reads[-1]["data"].endswith(other[2:])
+    _mgr(rpc).refund_owed(other)
+    assert rpc.reads[-1]["data"].endswith(other[2:])
+    _mgr(rpc).requester_refund_pending(12)
+    assert int(rpc.reads[-1]["data"][10:], 16) == 12
+
+
+@pytest.mark.parametrize(
+    ("claim", "args", "needle"),
+    [("claim_refund", (), "InferenceRouter"), ("claim_native_refund", (), "ComputeMarketplace"),
+     ("claim_requester_refund", (7,), "job 7")],
+)
+def test_nothing_to_claim_names_the_source(claim: str, args: tuple[int, ...], needle: str) -> None:
+    with pytest.raises(NothingToClaimError, match=needle):
+        getattr(_mgr(Rpc()), claim)(*args)
+
+
+def test_effective_tier_rejects_unknown_tier() -> None:
+    with pytest.raises(ValueError, match="tier"):
+        effective_tier("zkp", 0)
