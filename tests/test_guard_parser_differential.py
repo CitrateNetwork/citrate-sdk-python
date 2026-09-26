@@ -120,3 +120,43 @@ def test_guard_refuses_everything_any_decoder_accepts(decoder: object) -> None:
                 missed.append(s)
     assert accepted > 1000, "generator produced too few decodable inputs to be meaningful"
     assert missed == [], f"{len(missed)} decodable inputs passed the guard, e.g. {missed[:3]!r}"
+
+
+# ---- y given as bytes-like values and their JSON shapes -------------------
+
+def _byte_forms(b: bytes) -> list[object]:
+    return [b, bytearray(b), list(b), {"type": "Buffer", "data": list(b)}, {str(i): v for i, v in enumerate(b)}]
+
+
+def test_guard_refuses_share_length_bytes_in_every_form() -> None:
+    rng = random.Random(0xB17E5)
+    for n in (16, 17, 32, 64):
+        for _ in range(50):
+            b = bytes(rng.randrange(256) for _ in range(n))
+            for y in _byte_forms(b):
+                with pytest.raises(CitrateError):
+                    assert_no_key_share_material({"x": 1 + n % 200, "y": y})
+
+
+def test_guard_accepts_short_bytes_in_every_form() -> None:
+    rng = random.Random(0x5407)
+    for n in (1, 8, 15):
+        b = bytes(rng.randrange(256) for _ in range(n))
+        for y in _byte_forms(b):
+            assert_no_key_share_material({"x": 1, "y": y})
+
+
+def test_duplicate_keys_in_payloads_are_refused() -> None:
+    rng = random.Random(0xD0B1E)
+    for _ in range(200):
+        hexy = bytes(rng.randrange(256) for _ in range(32)).hex()
+        key = rng.choice(["x", "y", "note"])
+        texts = [
+            '{"a": {"x": 1, "y": "%s", "%s": "10"}}' % (hexy, key) if key == "y" else
+            '{"a": {"x": 1, "%s": "junk", "%s": 2, "y": "%s"}}' % (key, key, hexy),
+        ]
+        for t in texts:
+            with pytest.raises(CitrateError):
+                crypto.assert_payload_has_no_key_share_material(t)
+            with pytest.raises(CitrateError):
+                assert_no_key_share_material({"blob": t})

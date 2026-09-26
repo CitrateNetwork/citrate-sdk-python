@@ -1,6 +1,6 @@
 {
- "_comment": "Shared share-guard test vectors. The SAME file is committed to citrate-sdk-js and citrate-sdk-python (tests/fixtures/share_guard_vectors.json); each SDK's guard must refuse every refuse:true entry and accept every refuse:false entry. Keep the two copies byte-identical.",
- "version": 1,
+ "_comment": "Shared share-guard test vectors. The SAME file is committed to citrate-sdk-js and citrate-sdk-python (tests/fixtures/share_guard_vectors.json); each SDK's guard must refuse every refuse:true entry and accept every refuse:false entry. Keep the two copies byte-identical. raw_payloads are serialised payload texts for each SDK's payload guard (strict parse, then guard).",
+ "version": 2,
  "vectors": [
   {
    "name": "int x, 64-hex y",
@@ -394,6 +394,391 @@
    "meta": {
     "blob": "{not json"
    }
+  },
+  {
+   "name": "y as integer list",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": [
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171,
+      171
+     ]
+    }
+   }
+  },
+  {
+   "name": "y as 16-integer list",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ]
+    }
+   }
+  },
+  {
+   "name": "y as Buffer JSON shape",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": {
+      "type": "Buffer",
+      "data": [
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171,
+       171
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "y as index-keyed byte object",
+   "refuse": true,
+   "meta": {
+    "a": {
+     "x": 1,
+     "y": {
+      "0": 171,
+      "1": 171,
+      "2": 171,
+      "3": 171,
+      "4": 171,
+      "5": 171,
+      "6": 171,
+      "7": 171,
+      "8": 171,
+      "9": 171,
+      "10": 171,
+      "11": 171,
+      "12": 171,
+      "13": 171,
+      "14": 171,
+      "15": 171,
+      "16": 171,
+      "17": 171,
+      "18": 171,
+      "19": 171,
+      "20": 171,
+      "21": 171,
+      "22": 171,
+      "23": 171,
+      "24": 171,
+      "25": 171,
+      "26": 171,
+      "27": 171,
+      "28": 171,
+      "29": 171,
+      "30": 171,
+      "31": 171
+     }
+    }
+   }
+  },
+  {
+   "name": "JSON string with duplicate y",
+   "refuse": true,
+   "meta": {
+    "blob": "{\"x\": 1, \"y\": \"abababababababababababababababababababababababababababababababab\", \"y\": \"10\"}"
+   }
+  },
+  {
+   "name": "JSON string with duplicate x",
+   "refuse": true,
+   "meta": {
+    "blob": "{\"x\": 1, \"x\": \"junk\", \"y\": \"abababababababababababababababababababababababababababababababab\"}"
+   }
+  },
+  {
+   "name": "15-integer list y",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "name": "integer list with values over 255",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": [
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300,
+     300
+    ]
+   }
+  },
+  {
+   "name": "float list y",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": [
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5,
+     1.5
+    ]
+   }
+  },
+  {
+   "name": "Buffer shape with short data",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": {
+     "type": "Buffer",
+     "data": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ]
+    }
+   }
+  },
+  {
+   "name": "index-keyed object with a gap",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": {
+     "1": 1,
+     "2": 1,
+     "3": 1,
+     "4": 1,
+     "5": 1,
+     "6": 1,
+     "7": 1,
+     "8": 1,
+     "9": 1,
+     "10": 1,
+     "11": 1,
+     "12": 1,
+     "13": 1,
+     "14": 1,
+     "15": 1,
+     "16": 1,
+     "17": 1,
+     "18": 1,
+     "19": 1,
+     "20": 1,
+     "21": 1,
+     "22": 1,
+     "23": 1,
+     "24": 1,
+     "25": 1,
+     "26": 1,
+     "27": 1,
+     "28": 1,
+     "29": 1,
+     "30": 1,
+     "31": 1,
+     "32": 1
+    }
+   }
+  },
+  {
+   "name": "coordinate list y",
+   "refuse": false,
+   "meta": {
+    "x": 1,
+    "y": [
+     1,
+     2
+    ]
+   }
+  }
+ ],
+ "raw_payloads": [
+  {
+   "name": "top-level duplicate y",
+   "refuse": true,
+   "text": "{\"a\": {\"x\": 1, \"y\": \"abababababababababababababababababababababababababababababababab\", \"y\": \"10\"}}"
+  },
+  {
+   "name": "top-level duplicate x",
+   "refuse": true,
+   "text": "{\"a\": {\"x\": 1, \"x\": \"junk\", \"y\": \"abababababababababababababababababababababababababababababababab\"}}"
+  },
+  {
+   "name": "duplicate key at root",
+   "refuse": true,
+   "text": "{\"note\": \"a\", \"note\": \"b\"}"
+  },
+  {
+   "name": "benign payload",
+   "refuse": false,
+   "text": "{\"a\": {\"x\": 1, \"y\": \"10\"}, \"note\": \"ok\"}"
+  },
+  {
+   "name": "same key in sibling objects",
+   "refuse": false,
+   "text": "{\"a\": {\"y\": \"10\"}, \"b\": {\"y\": \"10\"}}"
   }
  ]
 }

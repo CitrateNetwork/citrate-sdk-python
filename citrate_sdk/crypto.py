@@ -64,13 +64,70 @@ def _share_x(x: Any) -> bool:
     return isinstance(x, str) and x.isascii() and x.isdigit() and 1 <= int(x) <= 255
 
 
+def _is_byte_int(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 255
+
+
+def _bytes_like_len(y: Any) -> int:
+    """Length of ``y`` if it is bytes or a JSON rendering of bytes (an integer
+    list, the ``{"type": "Buffer", "data": [...]}`` shape, or an object keyed
+    "0".."n-1" with byte values); otherwise 0."""
+    if isinstance(y, (bytes, bytearray)):
+        return len(y)
+    if isinstance(y, (list, tuple)):
+        return len(y) if all(_is_byte_int(v) for v in y) else 0
+    if isinstance(y, dict):
+        if set(y) == {"type", "data"} and y.get("type") == "Buffer":
+            return _bytes_like_len(list(y["data"])) if isinstance(y.get("data"), list) else 0
+        n = len(y)
+        if n and all(isinstance(k, str) for k in y) and set(y) == {str(i) for i in range(n)}:
+            return n if all(_is_byte_int(y[str(i)]) for i in range(n)) else 0
+    return 0
+
+
+class _DuplicateKeyError(ValueError):
+    pass
+
+
+def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise _DuplicateKeyError(k)
+        out[k] = v
+    return out
+
+
+def _loads_strict(text: str) -> Any:
+    """json.loads that rejects duplicate object keys (raises _DuplicateKeyError)."""
+    return json.loads(text, object_pairs_hook=_no_duplicate_keys)
+
+
+_DUP_MSG = (
+    "deploy_model: refusing to publish JSON with duplicate object keys; decoders disagree on "
+    "which value wins, so the content cannot be checked for key-share material (PBA-L6b-003)."
+)
+
+
+def assert_payload_has_no_key_share_material(payload: str) -> None:
+    """Guard a serialised JSON payload exactly as it will be sent: parse it
+    (refusing duplicate keys) and run :func:`assert_no_key_share_material`."""
+    try:
+        decoded = _loads_strict(payload)
+    except _DuplicateKeyError:
+        raise CitrateError(_DUP_MSG)
+    except (ValueError, RecursionError):
+        raise CitrateError("deploy_model: payload is not valid JSON; refusing to publish it.")
+    assert_no_key_share_material(decoded)
+
+
 def _looks_like_share(d: dict[Any, Any]) -> bool:
     """A raw Shamir share ({x in 1..255, y of share length as hex or bytes})
     or a holder-wrapped share record ({holder_public_key/holderPublicKey,
     envelope}). Short or coordinate-like values are not treated as shares."""
     y = d.get("y")
     if "x" in d and _share_x(d["x"]):
-        if isinstance(y, (bytes, bytearray)) and len(y) >= _MIN_SHARE_BYTES:
+        if _bytes_like_len(y) >= _MIN_SHARE_BYTES:
             return True
         if isinstance(y, str) and _share_y_like(y):
             return True
@@ -89,7 +146,9 @@ def assert_no_key_share_material(value: Any, _depth: int = 0) -> None:
         # Any string that parses as JSON is checked too (no size cap: a padded
         # blob must not slip through).
         try:
-            decoded = json.loads(value)
+            decoded = _loads_strict(value)
+        except _DuplicateKeyError:
+            raise CitrateError(_DUP_MSG)
         except (ValueError, RecursionError):
             return
         assert_no_key_share_material(decoded, _depth + 1)

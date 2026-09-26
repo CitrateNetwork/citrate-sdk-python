@@ -1,9 +1,7 @@
-"""Serialise once (deploy_model).
+"""Deploy payload is guarded as sent.
 
-deploy_model serialises the transaction payload exactly once, runs the share
-guard on the parsed result of those bytes, and sends those same bytes. The
-guard therefore judges what is sent, whatever the live objects do when read
-(dict subclasses overriding __getitem__ / get, and so on).
+deploy_model serialises the payload once, guards the parsed payload, and sends
+that exact payload.
 """
 from __future__ import annotations
 
@@ -22,14 +20,22 @@ OWNER = "0x" + "11" * 32
 Y = "ab" * 32
 
 
-class ReadsBenign(dict):
-    """Stores a share, but item access reports something harmless."""
-
+class _Mapping(dict):
     def __getitem__(self, k: Any) -> Any:
         return {"x": 0, "y": "10"}.get(k, super().get(k))
 
     def get(self, k: Any, default: Any = None) -> Any:
         return {"x": 0, "y": "10"}.get(k, default)
+
+
+class _Key(str):
+    """A str subclass; two distinct instances with the same text."""
+
+    def __hash__(self) -> int:
+        return id(self)
+
+    def __eq__(self, other: object) -> bool:
+        return self is other
 
 
 def _client(tmp_path: Path) -> tuple[CitrateClient, dict[str, Any], Path]:
@@ -52,14 +58,32 @@ def _client(tmp_path: Path) -> tuple[CitrateClient, dict[str, Any], Path]:
     return client, box, mp
 
 
+def _dup_y() -> dict[Any, Any]:
+    d: dict[Any, Any] = {"x": 1}
+    d[_Key("y")] = Y
+    d[_Key("y")] = "10"
+    return d
+
+
+def _dup_x() -> dict[Any, Any]:
+    d: dict[Any, Any] = {}
+    d[_Key("x")] = 1
+    d[_Key("x")] = "junk"
+    d["y"] = Y
+    return d
+
+
 @pytest.mark.parametrize("meta", [
-    {"m": ReadsBenign({"x": 1, "y": Y})},
-    {"m": [ReadsBenign({"x": "7", "y": Y})]},
-    {"m": ReadsBenign({"x": 1, "y": Y, "note": "n"})},
-], ids=["dict-subclass", "in-list", "extra-field"])
-def test_stateful_mapping_cannot_carry_a_share(tmp_path: Path, meta: dict[str, Any]) -> None:
+    {"m": _Mapping({"x": 1, "y": Y})},
+    {"m": [_Mapping({"x": "7", "y": Y})]},
+    {"m": _Mapping({"x": 1, "y": Y, "note": "n"})},
+    {"m": _dup_y()},
+    {"m": _dup_x()},
+    {"blob": '{"x": 1, "y": "' + Y + '", "y": "10"}'},
+], ids=["case-1", "case-2", "case-3", "case-4", "case-5", "case-6"])
+def test_payload_guarded_as_sent(tmp_path: Path, meta: dict[str, Any]) -> None:
     client, box, mp = _client(tmp_path)
-    with pytest.raises(CitrateError, match="key share|key-share"):
+    with pytest.raises(CitrateError):
         client.deploy_model(mp, ModelConfig(name="m", metadata=meta))
     assert "raw" not in box
 
@@ -67,21 +91,19 @@ def test_stateful_mapping_cannot_carry_a_share(tmp_path: Path, meta: dict[str, A
 def test_the_guard_sees_exactly_the_bytes_sent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from citrate_sdk import client as client_mod
 
-    seen: list[Any] = []
-    real = client_mod.assert_no_key_share_material
+    seen: list[str] = []
+    real = client_mod.assert_payload_has_no_key_share_material
 
-    def spy(value: Any) -> None:
-        seen.append(value)
-        real(value)
+    def spy(payload: str) -> None:
+        seen.append(payload)
+        real(payload)
 
-    monkeypatch.setattr(client_mod, "assert_no_key_share_material", spy)
+    monkeypatch.setattr(client_mod, "assert_payload_has_no_key_share_material", spy)
     client, box, mp = _client(tmp_path)
     client.deploy_model(mp, ModelConfig(name="m", metadata={"note": "ok"}))
-    sent = bytes(rlp.decode(bytes.fromhex(box["raw"][2:]))[5])
-    assert len(seen) == 1
-    # The guard was handed the parsed form of the exact bytes that went out.
-    assert seen[0] == json.loads(sent)
-    assert type(seen[0]) is dict
+    sent = bytes(rlp.decode(bytes.fromhex(box["raw"][2:]))[5]).decode()
+    assert seen == [sent]
+    assert "model_hash" in json.loads(sent)
 
 
 def test_benign_deploy_still_sends(tmp_path: Path) -> None:

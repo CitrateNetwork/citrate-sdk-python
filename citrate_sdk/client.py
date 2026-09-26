@@ -13,7 +13,7 @@ import requests
 
 from ._generated import contract as _contract
 from ._url_security import enforce_transport_security
-from .crypto import EncryptionConfig, KeyManager, assert_no_key_share_material
+from .crypto import EncryptionConfig, KeyManager, assert_payload_has_no_key_share_material
 from .errors import CitrateError, ModelNotFoundError
 from .ipfs import upload_to_ipfs
 from .models import InferenceRequest, InferenceResult, ModelConfig, ModelDeployment
@@ -230,12 +230,11 @@ class CitrateClient:
         if encryption_metadata:
             tx_data["encryption_metadata"] = encryption_metadata
 
-        # PBA-L6b-003: this calldata is public. Serialise ONCE, run the share
-        # guard on the parsed result of exactly those bytes, and send those
-        # same bytes, so the guard judges what is sent rather than how the
-        # live objects answer when read.
+        # PBA-L6b-003: this calldata is public. Serialise once, guard the parsed
+        # payload (duplicate keys refused), and send that exact payload. json.dumps
+        # only emits JSON types, so the parsed payload is the complete view.
         payload = json.dumps(tx_data)
-        assert_no_key_share_material(json.loads(payload))
+        assert_payload_has_no_key_share_material(payload)
 
         # Call model deployment precompile. SPY-B-007: the address is read from
         # the vendored canonical table (ModelDeploy = 0x..0100), NOT a hardcoded
