@@ -13,14 +13,14 @@ def test_chain_id_is_40204():
 def test_aa_stack_pins_the_live_addresses():
     aa = contract.aa_stack()
     assert aa["EntryPoint"].lower() == "0x97d5391a647429233e202f99231743c53a648f3c"
-    assert aa["CitrateWalletFactory"].lower() == "0x24e2a41e48fb3d5a054528bf017ebaec0ac94eff"
-    assert aa["CitratePaymaster"].lower() == "0x8e65bff91e4c53556e1cee8b0135ffb09d427e58"
+    assert aa["CitrateWalletFactory"].lower() == "0x9ac05ad65c9e8e48fbb41dde029512afa5346c85"
+    assert aa["CitratePaymaster"].lower() == "0x804a8021cc1212798180bc9330f6467f883c392c"
 
 
 def test_membership_addresses_present():
     m = contract.membership()
-    assert m["CitrateMemberSBT"].lower() == "0xa24aa35fba269f8755c2173779cc3dbc9690c4c9"
-    assert m["MembershipStakeVault"].lower() == "0x4c0f8b27c509cba4a32e1cd2bc5709bbd2699024"
+    assert m["CitrateMemberSBT"].lower() == "0xf8ad11f6d3aefa605e2ebf7c81ed08a2b38b3a3c"
+    assert m["MembershipStakeVault"].lower() == "0xa93f7f688a8f212e0cad59edbd1f7d3592151751"
 
 
 def test_entitlement_vocabulary():
@@ -51,3 +51,11 @@ def test_no_pre_reroll_addresses_leak():
     blob = json.dumps(contract.federation_contract()).lower()
     for dead in ("0xf0badd9e", "0x53fb4bad", "0x2655d9fb", "0xf42a1919"):
         assert dead not in blob, f"pre-reroll address {dead} leaked into the artifact"
+
+
+def test_no_r0929_addresses_leak():
+    """r1005 reroll 2026-10-06 (genesis 0x1dcfc490…, citrate-chain bf551422) retired the 09-29 book."""
+    import json
+    blob = json.dumps(contract.federation_contract()).lower()
+    for dead in ("0xa24aa35f", "0x4c0f8b27", "0xba4abd4f", "0x915fada6", "0xa3512be8", "0x24e2a41e", "0x8e65bff9"):
+        assert dead not in blob, f"09-29 address {dead} leaked into the artifact"
