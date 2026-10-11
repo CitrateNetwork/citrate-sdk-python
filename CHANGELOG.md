@@ -3,6 +3,24 @@
 All notable changes to `citrate-labs-sdk` are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.4] - 2026-10-06 — Post-reroll address book (r1005)
+
+### Fixed
+
+- Address book re-synced for the 2026-10-06 r1005 reroll (genesis block `0x1dcfc490…`,
+  citrate-chain bf551422; supersedes the 2026-09-29 book this release first carried).
+  `citrate_sdk/_generated/federation_contract.json` re-synced verbatim via `scripts/sync_contract.py`
+  from citrate-federation `contract/federation-contract.json`. Membership now points at
+  `CitrateMemberSBT 0xf8aD11f6…` / `MembershipStakeVault 0xA93F7f68…`.
+
+### Tests
+
+- `test_federation_contract.py` pins the r1005 membership + AA-stack addresses
+  (`CitrateWalletFactory 0x9Ac05AD6…`, `CitratePaymaster 0x804a8021…`) and asserts no
+  pre-reroll address (09-29 or earlier) leaks.
+- Wallet-prediction vector `predictAddress(0x4242…)` = `0x6Ef76179…`, re-read from the live
+  factory on rpc.citrate.ai 2026-10-06, updated in `test_identity_wallet.py` and `test_cli.py`.
+
 ## [0.6.3] - 2026-09-25 — Hardening
 
 ### Changed

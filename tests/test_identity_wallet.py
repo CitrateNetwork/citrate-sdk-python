@@ -1,6 +1,7 @@
 """DEVX-S1 / F2 — embedded wallet prediction (Python parity with JS + on-chain factory).
 
-Pinned to the on-chain CitrateWalletFactory.predictAddress(0x4242…)=0x1615Af12… (2026-07-25),
+Pinned to the on-chain CitrateWalletFactory.predictAddress(0x4242…)=0x6Ef76179… (2026-10-06,
+live factory 0x9Ac05AD6… after the 2026-10-06 r1005 re-roll, genesis 0x1dcfc490…),
 the SAME value the JS SDK produces — cross-language byte parity (risk R-2).
 """
 from __future__ import annotations
@@ -19,7 +20,7 @@ def _raises(exc, fn):
 
 
 def test_predict_matches_onchain_and_js():
-    assert wallet.predict_wallet_address(USER_ID_4242) == "0xfb43484CDbA25C6457C2775C1d6dfeD71cE4e720"
+    assert wallet.predict_wallet_address(USER_ID_4242) == "0x6Ef7617980a1fe91D3449315E8D48f99A68Bb5eA"
 
 
 def test_predict_uses_artifact_factory_and_impl_by_default():
