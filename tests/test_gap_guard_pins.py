@@ -184,7 +184,7 @@ def _recording_client(calls: list[tuple[str, dict[str, Any]]], data: bytes = b"x
             return _Resp(chunks=[data])
         return _Resp({})
 
-    c.session.post = post  # type: ignore[method-assign]
+    c.session.post = post  # type: ignore[method-assign,assignment]
     return c
 
 
