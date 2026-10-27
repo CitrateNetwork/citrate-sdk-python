@@ -3,6 +3,55 @@
 All notable changes to `citrate-labs-sdk` are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-10-27 — r1006 address book and a genesis guard
+
+Held for the r1006 public cutover: publish only after rpc.citrate.ai serves r1006.
+
+### Changed
+
+- Address book follows the r1006 network of 40204 (genesis block
+  `0xa3651a272fe411948cbb4cf7cca4cee44be4248d32ab4376cea7636821c6cdd4`). The book is citrate-chain
+  `contracts/addresses/r1006/40204.json` (final since a857443e; every contract is in block 0).
+  `citrate_sdk/_generated/federation_contract.json` re-synced verbatim via
+  `scripts/sync_contract.py` from the citrate-federation gen-contract output (branch
+  `beta/fxsdk-r1006-contract`); no hand edits. AA stack: `CitrateWalletFactory 0x6ee3b590…`,
+  `CitratePaymaster 0x5a1e2d73…`. Membership: `CitrateMemberSBT 0x88316513…`,
+  `MembershipStakeVault 0xd6632ea2…`. Contracts not in r1006 block 0 (`LiquidStakingPool`,
+  `CitAgentTimelock`, the DPF and tenant/governance-kit registries) are no longer in
+  `contract.contracts()`.
+- `StakingManager` without `staking_address` now says that `LiquidStakingPool` is not in the
+  r1006 address book.
+
+### Added
+
+- Network guard. r1005 and r1006 share chain id 40204, so the SPY-B-005 / PBA-L6b-042 chain-id
+  pins cannot tell them apart. `CitrateClient` reads block 0 before it signs a transaction, the
+  Learning/Staking/Classroom/Compute/Treasury/Farming managers before their first write
+  (`pinned_send`), and `verify_wallet_address_on_chain` before it trusts the book's factory; each
+  raises `WrongNetworkError` (`error_code="WRONG_NETWORK"`) unless the hash is the vendored
+  genesis. `client.verify_network()` runs the check up front. `expected_genesis_hash=` overrides
+  the hash; `None` skips the check (a local devnet). With a non-vendored `chain_id=` the check is
+  off unless a hash is given.
+- `contract.genesis_hash()`.
+- `scripts/sync_contract.py` and `scripts/check-contract-drift.sh` honour
+  `CITRATE_FEDERATION_DIR`, and the sync refuses an artifact without a 32-byte `genesisHash`.
+
+### Tests
+
+- `tests/test_r1006_network_guard.py` (19 tests): the r1006 book, no r1005 address, the
+  LiquidStakingPool message, and the guard on every path (wrong genesis, missing or unreadable
+  block 0, failure not cached, opt-out, override).
+- Wallet-prediction vector `predictAddress(0x4242…)` = `0xEFf9CC17…` for the r1006 factory,
+  computed offline; the same formula reproduces r1005's live `0x6Ef76179…`, which stays pinned as
+  a formula check. Re-read it from the live factory after the cutover.
+- RPC fakes that stand in for a 40204 node answer block 0 with the vendored genesis
+  (`tests/_chain_rpc.py` `node_answer`, and the per-file fakes).
+
+### Docs
+
+- README: the r1006 book, the network guard, the devnet opt-out, and "Tokenomics are not yet
+  determined; see docs.citrate.ai."
+
 ## [0.6.4] - 2026-10-06 — Post-reroll address book (r1005)
 
 ### Fixed

@@ -71,6 +71,8 @@ class Rpc:
 
     def __call__(self, method: str, params: list[Any]) -> Any:
         assert isinstance(params, list), f"{method}: params must be a JSON array"
+        if method == "eth_getBlockByNumber":  # r1006 genesis guard reads block 0
+            return {"number": "0x0", "hash": _contract.genesis_hash()}
         if method == "eth_chainId":
             return hex(self.chain_id)
         if method == "eth_blockNumber":

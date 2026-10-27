@@ -18,8 +18,9 @@ import requests
 from citrate_sdk import CitrateClient
 from citrate_sdk._generated import contract
 from citrate_sdk.compute import ComputeManager
-from citrate_sdk.errors import CitrateError, WrongNetworkError
+from citrate_sdk.errors import CitrateError, ConfigurationError, WrongNetworkError
 from citrate_sdk.identity import wallet
+from citrate_sdk.learning import StakingManager
 
 R1006 = "0xa3651a272fe411948cbb4cf7cca4cee44be4248d32ab4376cea7636821c6cdd4"
 R1005 = "0x1dcfc4909dd9fdcb0f03c823d627e4b2032cc86bef5fc4561030d6c64b9775f1"
@@ -45,6 +46,11 @@ def test_book_drops_contracts_not_in_r1006_block_0() -> None:
     names = contract.contracts()
     for gone in ("LiquidStakingPool", "CitAgentTimelock", "DefensePrimeComplianceRegistry", "TenantHierarchy"):
         assert gone not in names
+
+
+def test_staking_manager_says_liquid_staking_is_not_in_r1006() -> None:
+    with pytest.raises(ConfigurationError, match="not in the r1006 address book"):
+        StakingManager(_manager_rpc(R1006)[0], default_account=ACCT).deposit("1")
 
 
 def test_no_r1005_address_leaks() -> None:

@@ -11,6 +11,7 @@ from typing import Any, cast
 
 import requests
 
+from ._chain_guard import UNSET, assert_genesis, resolve_expected_genesis
 from ._generated import contract as _contract
 from ._url_security import enforce_transport_security
 from .crypto import (
@@ -55,7 +56,7 @@ class CitrateClient:
 
     def __init__(self, rpc_url: str = "http://localhost:8545", private_key: str | None = None,
                  allow_insecure_http: bool = False, timeout: float = 30.0,
-                 chain_id: int | None = None, expected_genesis_hash: Any = None):
+                 chain_id: int | None = None, expected_genesis_hash: Any = UNSET):
         """
         Initialize Citrate client.
 
@@ -81,11 +82,19 @@ class CitrateClient:
                 cannot make the SDK produce a signature valid on another network
                 (e.g. Ethereum mainnet). Pass an explicit value only when
                 genuinely targeting a different Citrate network.
+            expected_genesis_hash: the block-0 hash the RPC must report before the
+                client signs a transaction. r1005 and r1006 share chain id 40204,
+                so the chain id alone cannot tell them apart. Defaults to the
+                vendored address book's genesis (r1006) when ``chain_id`` is the
+                vendored chain, and to no check for another ``chain_id``. Pass a
+                hash for another network, or ``None`` to skip (a local dev chain).
         """
         self.timeout = timeout
         # SPY-B-005: the chain-id that domain-separates every signature is PINNED to
         # the vendored artifact (or an explicit override), never adopted from the RPC.
         self._expected_chain_id = int(chain_id) if chain_id is not None else _contract.chain_id()
+        self._expected_genesis = resolve_expected_genesis(expected_genesis_hash, self._expected_chain_id)
+        self._network_verified = False
         # SECREM-01 WEB-4: warn when an RPC endpoint sends signed transactions /
         # private inputs to a remote host over plaintext http://.
         rpc_url = enforce_transport_security(rpc_url, allow_insecure_http=allow_insecure_http)
@@ -146,7 +155,16 @@ class CitrateClient:
             raise CitrateError(f"Network error: {str(e)}")
 
     def verify_network(self) -> None:
-        return None
+        """Check that the RPC's block 0 is the expected genesis (see ``expected_genesis_hash``).
+
+        Runs once per client (a failure is not cached) and before every transaction the
+        client signs. Raises ``WrongNetworkError`` on another network.
+        Data source: ``eth_getBlockByNumber(0)`` on ``rpc_url``.
+        """
+        if self._expected_genesis is None or self._network_verified:
+            return
+        assert_genesis(self._rpc_call, self._expected_genesis)
+        self._network_verified = True
 
     def get_chain_id(self) -> int:
         """Get blockchain chain ID.
@@ -486,6 +504,9 @@ class CitrateClient:
         encoded = data if isinstance(data, str) else json.dumps(data)
         if not self.key_manager:
             raise CitrateError("Private key required for transactions")
+
+        # r1006: refuse another network (same chain id, different genesis) before signing.
+        self.verify_network()
 
         # Get account info
         from_address = self.key_manager.get_address()

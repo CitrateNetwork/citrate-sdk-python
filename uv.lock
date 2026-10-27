@@ -590,7 +590,7 @@ wheels = [
 
 [[package]]
 name = "citrate-labs-sdk"
-version = "0.6.4"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

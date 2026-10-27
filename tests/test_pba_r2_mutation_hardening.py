@@ -26,6 +26,7 @@ from eth_utils import to_checksum_address
 from citrate_sdk import CitrateClient, KeyManager
 from citrate_sdk._chain_guard import pinned_send
 from citrate_sdk._generated import contract
+from citrate_sdk._generated import contract as _contract
 from citrate_sdk._url_security import InsecureTransportError, enforce_transport_security
 from citrate_sdk.crypto import (
     EncryptionConfig,
@@ -180,7 +181,8 @@ def test_unencrypted_deploy_sends_an_empty_access_list(tmp_path: Path) -> None:
         if method == "eth_sendRawTransaction":
             box["raw"] = params[0]
             return "0x" + "ab" * 32
-        return {"eth_getTransactionCount": "0x0", "eth_chainId": hex(40204), "eth_gasPrice": "0x1"}[method]
+        return {"eth_getTransactionCount": "0x0", "eth_chainId": hex(40204), "eth_gasPrice": "0x1",
+                "eth_getBlockByNumber": {"number": "0x0", "hash": _contract.genesis_hash()}}[method]
 
     stubs: dict[str, Any] = {"_rpc_call": rpc, "_upload_to_ipfs": lambda d: "bafy",
                              "_wait_for_receipt": lambda h: {"logs": []},
@@ -202,6 +204,8 @@ class TestPinnedSend:
             _chain_verified = False
 
             def _rpc_call(self, method: str, params: Any) -> Any:
+                if method == "eth_getBlockByNumber":  # r1006 genesis guard reads block 0
+                    return {"number": "0x0", "hash": _contract.genesis_hash()}
                 if method == "eth_chainId":
                     return 40204
                 sent.append(params[0])
@@ -216,6 +220,8 @@ def _rpc_capture(result: str = "0xhash") -> tuple[Any, list[Any]]:
     sent: list[Any] = []
 
     def rpc(method: str, params: Any) -> Any:
+        if method == "eth_getBlockByNumber":  # r1006 genesis guard reads block 0
+            return {"number": "0x0", "hash": _contract.genesis_hash()}
         if method == "eth_chainId":
             return hex(40204)
         if method == "eth_sendTransaction":
@@ -365,8 +371,10 @@ def _wallet_post(chain: int = 40204, code: str = "0x60", result: Any = "echo", e
             r._content = json.dumps({"jsonrpc": "2.0", "id": 1, "error": {"code": -1}}).encode()
             return r
         m = body["method"]
-        if m == "eth_chainId":
-            res: Any = hex(chain)
+        if m == "eth_getBlockByNumber":  # r1006 genesis guard reads block 0
+            res: Any = {"number": "0x0", "hash": _contract.genesis_hash()}
+        elif m == "eth_chainId":
+            res = hex(chain)
         elif m == "eth_getCode":
             res = code
         else:
@@ -387,7 +395,8 @@ class TestWalletPlumbing:
         assert url == "https://rpc.example" and headers == {"content-type": "application/json"} and timeout == 10.0
         from eth_utils import keccak
         assert body["params"] == [{"to": factory, "data": "0x" + keccak(b"predictAddress(bytes32)")[:4].hex() + "42" * 32}, "latest"]
-        assert calls[1][1]["params"] == [factory, "latest"]
+        assert calls[1][1]["params"] == ["0x0", False]  # r1006 genesis guard: block 0
+        assert calls[2][1]["params"] == [factory, "latest"]
 
     def test_rpc_error_object_is_refused(self) -> None:
         post, _ = _wallet_post(error=True)
@@ -644,15 +653,19 @@ class TestWalletMore:
         def post(url: str, data: str | None = None, headers: Any = None, timeout: Any = None) -> requests.Response:
             body = json.loads(data or "{}")
             calls.append((url, body, timeout))
-            res = {"eth_chainId": hex(40204), "eth_getCode": "0x60"}.get(body["method"], "0x" + "00" * 12 + local[2:].lower())
+            res = {"eth_chainId": hex(40204), "eth_getCode": "0x60",
+                   "eth_getBlockByNumber": {"hash": _contract.genesis_hash()}}.get(
+                body["method"], "0x" + "00" * 12 + local[2:].lower())
             r = requests.Response()
             r.status_code = 200
             r._content = json.dumps({"jsonrpc": "2.0", "id": 1, "result": res}).encode()
             return r
         with mock.patch.object(wallet.requests, "post", post):
             assert wallet.verify_wallet_address_on_chain(UID, rpc_url="https://r.example", implementation=impl, timeout=3.0) == local
-        assert [(c[0], c[1]["method"], c[1]["params"], c[2]) for c in calls[:2]] == [
-            ("https://r.example", "eth_chainId", [], 3.0), ("https://r.example", "eth_getCode", [f, "latest"], 3.0)]
+        assert [(c[0], c[1]["method"], c[1]["params"], c[2]) for c in calls[:3]] == [
+            ("https://r.example", "eth_chainId", [], 3.0),
+            ("https://r.example", "eth_getBlockByNumber", ["0x0", False], 3.0),
+            ("https://r.example", "eth_getCode", [f, "latest"], 3.0)]
         assert all(c[1]["jsonrpc"] == "2.0" for c in calls)
 
 
@@ -669,7 +682,8 @@ class TestDeployMore:
             if method == "eth_sendRawTransaction":
                 box["raw"] = params[0]
                 return "0x" + "cd" * 32
-            return {"eth_getTransactionCount": "0x0", "eth_chainId": hex(40204), "eth_gasPrice": "0x1"}[method]
+            return {"eth_getTransactionCount": "0x0", "eth_chainId": hex(40204), "eth_gasPrice": "0x1",
+                "eth_getBlockByNumber": {"number": "0x0", "hash": _contract.genesis_hash()}}[method]
 
         def wait(h: str) -> Any:
             assert h == "0x" + "cd" * 32

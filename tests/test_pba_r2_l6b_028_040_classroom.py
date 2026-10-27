@@ -24,6 +24,7 @@ from eth_abi import encode as abi_encode
 from eth_account import Account
 from eth_utils import keccak
 
+from citrate_sdk._generated import contract as _contract
 from citrate_sdk.abi import AbiInterface, keccak256, keccak256_text
 from citrate_sdk.learning import CLASSROOM_REGISTRY_ABI, ClassroomManager
 
@@ -56,6 +57,8 @@ def _manager(sent: dict[str, Any], result: str = "0x") -> ClassroomManager:
         if method == "eth_sendTransaction":
             sent["tx"] = params[0]
             return "0xhash"
+        if method == "eth_getBlockByNumber":  # r1006 genesis guard reads block 0
+            return {"number": "0x0", "hash": _contract.genesis_hash()}
         if method == "eth_chainId":
             return hex(40204)
         if method == "eth_call":

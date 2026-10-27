@@ -13,6 +13,7 @@ import pytest
 import rlp  # type: ignore[import-untyped]
 
 from citrate_sdk import CitrateClient
+from citrate_sdk._generated import contract as _contract
 from citrate_sdk.errors import CitrateError
 from citrate_sdk.models import ModelConfig
 
@@ -48,7 +49,8 @@ def _client(tmp_path: Path) -> tuple[CitrateClient, dict[str, Any], Path]:
         if method == "eth_sendRawTransaction":
             box["raw"] = params[0]
             return "0x" + "ab" * 32
-        return {"eth_getTransactionCount": "0x0", "eth_chainId": hex(40204), "eth_gasPrice": "0x1"}[method]
+        return {"eth_getTransactionCount": "0x0", "eth_chainId": hex(40204), "eth_gasPrice": "0x1",
+                "eth_getBlockByNumber": {"number": "0x0", "hash": _contract.genesis_hash()}}[method]
 
     stubs: dict[str, Any] = {"_rpc_call": rpc, "_upload_to_ipfs": lambda d: "bafy",
                              "_wait_for_receipt": lambda h: {"logs": []},
