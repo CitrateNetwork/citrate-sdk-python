@@ -1,4 +1,8 @@
-"""DEVX-S0 / F1 — the vendored federation contract pins the on-chain-verified truth."""
+"""DEVX-S0 / F1 — the vendored federation contract pins the r1006 book (genesis 0xa3651a27…).
+
+citrate-chain contracts/addresses/r1006/40204.json (final since a857443e; every contract is in
+block 0), via citrate-federation gen-contract.
+"""
 from __future__ import annotations
 
 from citrate_sdk._generated import contract
@@ -10,17 +14,17 @@ def test_chain_id_is_40204():
     assert contract.ws_url() == "wss://rpc.citrate.ai/ws"
 
 
-def test_aa_stack_pins_the_live_addresses():
+def test_aa_stack_pins_the_r1006_addresses():
     aa = contract.aa_stack()
     assert aa["EntryPoint"].lower() == "0x97d5391a647429233e202f99231743c53a648f3c"
-    assert aa["CitrateWalletFactory"].lower() == "0x9ac05ad65c9e8e48fbb41dde029512afa5346c85"
-    assert aa["CitratePaymaster"].lower() == "0x804a8021cc1212798180bc9330f6467f883c392c"
+    assert aa["CitrateWalletFactory"].lower() == "0x6ee3b59099c9c812cdf1c9e7e6ff166b2558434c"
+    assert aa["CitratePaymaster"].lower() == "0x5a1e2d73f8154a01a78b56e551c977cb8327ff56"
 
 
 def test_membership_addresses_present():
     m = contract.membership()
-    assert m["CitrateMemberSBT"].lower() == "0xf8ad11f6d3aefa605e2ebf7c81ed08a2b38b3a3c"
-    assert m["MembershipStakeVault"].lower() == "0xa93f7f688a8f212e0cad59edbd1f7d3592151751"
+    assert m["CitrateMemberSBT"].lower() == "0x883165132776171fbcfde2d3c789ef5bdb0d060d"
+    assert m["MembershipStakeVault"].lower() == "0xd6632ea2179d047d2460f1de90abcc519839555e"
 
 
 def test_entitlement_vocabulary():

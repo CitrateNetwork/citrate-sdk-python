@@ -16,6 +16,13 @@ from ._generated import contract as _contract
 from .errors import CitrateError
 
 
+class _Unset:
+    """Sentinel: no expected genesis was passed (use the vendored one)."""
+
+
+UNSET: Any = _Unset()
+
+
 def expected_chain_id(chain_id: int | None) -> int:
     return int(chain_id) if chain_id is not None else _contract.chain_id()
 

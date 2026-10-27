@@ -12,6 +12,13 @@ class CitrateError(Exception):
         self.details = details or {}
 
 
+class WrongNetworkError(CitrateError):
+    """The RPC is on another network than the vendored address book is for, or cannot say."""
+
+    def __init__(self, message: str, details: dict | None = None):
+        super().__init__(message, "WRONG_NETWORK", details)
+
+
 class NetworkError(CitrateError):
     """Network communication errors"""
     pass

@@ -26,6 +26,10 @@ def chain_id() -> int:
     return int(federation_contract()["chain"]["chainId"])
 
 
+def genesis_hash() -> str:
+    return ""
+
+
 def rpc_url() -> str:
     return str(federation_contract()["chain"]["rpcUrl"])
 

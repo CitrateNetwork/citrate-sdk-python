@@ -55,7 +55,7 @@ class CitrateClient:
 
     def __init__(self, rpc_url: str = "http://localhost:8545", private_key: str | None = None,
                  allow_insecure_http: bool = False, timeout: float = 30.0,
-                 chain_id: int | None = None):
+                 chain_id: int | None = None, expected_genesis_hash: Any = None):
         """
         Initialize Citrate client.
 
@@ -144,6 +144,9 @@ class CitrateClient:
             raise CitrateError(f"Invalid JSON response: {str(e)}")
         except Exception as e:
             raise CitrateError(f"Network error: {str(e)}")
+
+    def verify_network(self) -> None:
+        return None
 
     def get_chain_id(self) -> int:
         """Get blockchain chain ID.

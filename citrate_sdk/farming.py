@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from ._chain_guard import expected_chain_id, pinned_send
+from ._chain_guard import UNSET, expected_chain_id, pinned_send
 from .abi import AbiInterface
 from .errors import ConfigurationError
 
@@ -70,6 +70,7 @@ class FarmingManager:
         contract_addresses: dict[str, str] | None = None,
         *,
         chain_id: int | None = None,
+        expected_genesis_hash: Any = UNSET,
     ) -> None:
         self._rpc_call = rpc_call
         # PBA-L6b-042: writes assert eth_chainId against this before sending.
