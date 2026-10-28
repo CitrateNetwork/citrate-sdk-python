@@ -169,6 +169,58 @@ def test_manager_write_sends_on_r1006_and_checks_once() -> None:
     assert methods.count("eth_getBlockByNumber") == 1 and methods.count("eth_sendTransaction") == 2
 
 
+def _switching_manager_rpc(answers: list[Any]) -> tuple[Any, list[str]]:
+    """A node whose block 0 answers come from ``answers`` in turn (an Exception is raised)."""
+    methods: list[str] = []
+
+    def rpc(method: str, params: Any) -> Any:
+        methods.append(method)
+        if method == "eth_chainId":
+            return hex(40204)
+        if method == "eth_getBlockByNumber":
+            a = answers[min(methods.count("eth_getBlockByNumber"), len(answers)) - 1]
+            if isinstance(a, Exception):
+                raise a
+            return {"hash": a}
+        return "0xhash"
+
+    return rpc, methods
+
+
+def test_manager_failure_is_not_cached() -> None:
+    """A failed genesis check must not mark the manager verified: a second write refuses too."""
+    rpc, methods = _manager_rpc(R1005)
+    mgr = ComputeManager(rpc, default_account=ACCT, contract_addresses=ADDRS)
+    for _ in range(2):
+        with pytest.raises(WrongNetworkError):
+            mgr.heartbeat()
+    assert "eth_sendTransaction" not in methods
+    assert methods.count("eth_getBlockByNumber") == 2
+    assert mgr._chain_verified is False
+
+
+def test_manager_rechecks_after_a_failure_and_then_caches_success() -> None:
+    rpc, methods = _switching_manager_rpc([R1005, R1006])
+    mgr = ComputeManager(rpc, default_account=ACCT, contract_addresses=ADDRS)
+    with pytest.raises(WrongNetworkError):
+        mgr.heartbeat()
+    assert "eth_sendTransaction" not in methods
+    mgr.heartbeat()
+    mgr.heartbeat()
+    assert methods.count("eth_getBlockByNumber") == 2
+    assert methods.count("eth_sendTransaction") == 2
+
+
+@pytest.mark.parametrize("answer", [CitrateError("Network error: down"), None, ""])
+def test_manager_fails_closed_when_block_0_is_unreadable(answer: Any) -> None:
+    rpc, methods = _switching_manager_rpc([answer])
+    mgr = ComputeManager(rpc, default_account=ACCT, contract_addresses=ADDRS)
+    for _ in range(2):
+        with pytest.raises(WrongNetworkError):
+            mgr.heartbeat()
+    assert "eth_sendTransaction" not in methods
+
+
 def test_manager_override_and_opt_out() -> None:
     rpc, methods = _manager_rpc(R1005)
     ComputeManager(rpc, default_account=ACCT, contract_addresses=ADDRS, expected_genesis_hash=None).heartbeat()
