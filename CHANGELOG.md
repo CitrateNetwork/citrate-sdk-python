@@ -31,16 +31,22 @@ Held for the r1006 public cutover: publish only after rpc.citrate.ai serves r100
   raises `WrongNetworkError` (`error_code="WRONG_NETWORK"`) unless the hash is the vendored
   genesis. `client.verify_network()` runs the check up front. `expected_genesis_hash=` overrides
   the hash; `None` skips the check (a local devnet). With a non-vendored `chain_id=` the check is
-  off unless a hash is given.
+  off unless a hash is given. Manager reads (`eth_call` views) are not gated: the managers take
+  their contract addresses from the caller, not from the vendored book.
 - `contract.genesis_hash()`.
 - `scripts/sync_contract.py` and `scripts/check-contract-drift.sh` honour
   `CITRATE_FEDERATION_DIR`, and the sync refuses an artifact without a 32-byte `genesisHash`.
 
 ### Tests
 
-- `tests/test_r1006_network_guard.py` (19 tests): the r1006 book, no r1005 address, the
-  LiquidStakingPool message, and the guard on every path (wrong genesis, missing or unreadable
-  block 0, failure not cached, opt-out, override).
+- `tests/test_r1006_network_guard.py` (24 tests): the r1006 book, no r1005 address, the
+  LiquidStakingPool message, and the guard on every path: wrong genesis, missing or unreadable
+  block 0 (client and managers, fails closed), a failed check not cached (client and managers:
+  a second write after a failure refuses too; fail then succeed reads block 0 twice and a
+  success is then cached), opt-out, override.
+- `scripts/check_keyshare_wheel.py` (built wheel) answers block 0 with the wheel's vendored
+  `genesis_hash()`, so the key-share checks run with the guard on, and it also requires the
+  wheel's client to refuse another genesis before sending.
 - Wallet-prediction vector `predictAddress(0x4242…)` = `0xEFf9CC17…` for the r1006 factory,
   computed offline; the same formula reproduces r1005's live `0x6Ef76179…`, which stays pinned as
   a formula check. Re-read it from the live factory after the cutover.
