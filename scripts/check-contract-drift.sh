@@ -13,7 +13,8 @@
 # .github/workflows/ci.yml (CL-C2 / SW-092).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-CANONICAL="$HERE/../citrate-federation/contract/federation-contract.json"
+FED_DIR="${CITRATE_FEDERATION_DIR:-$HERE/../citrate-federation}"
+CANONICAL="$FED_DIR/contract/federation-contract.json"
 
 if [ ! -f "$CANONICAL" ]; then
   echo "[contract-drift] federation sibling not found at $CANONICAL"

@@ -16,6 +16,7 @@ from typing import Any
 import requests
 from eth_utils import keccak, to_checksum_address
 
+from .._chain_guard import UNSET, assert_genesis, is_unset, resolve_expected_genesis
 from .._generated import contract as _contract
 from .._url_security import enforce_transport_security
 
@@ -87,6 +88,7 @@ def verify_wallet_address_on_chain(
     *,
     chain_id: int | None = None,
     allow_insecure_http: bool = False,
+    expected_genesis_hash: Any = UNSET,
 ) -> str:
     """Verify the local prediction against the on-chain factory (ground truth).
 
@@ -99,6 +101,11 @@ def verify_wallet_address_on_chain(
     the pinned federation chain), and the factory must have code there — so a
     MITM or a wrong-chain RPC cannot make "verified" pass by echoing the
     publicly computable prediction.
+
+    r1006: the same chain id is not the same network (r1005 and r1006 are both 40204).
+    When neither ``factory`` nor ``chain_id`` is overridden (the vendored book is being
+    verified), block 0 must be the book's genesis; ``expected_genesis_hash`` overrides it and
+    ``None`` skips it. Raises ``WrongNetworkError`` otherwise.
     """
     local = predict_wallet_address(user_id, factory=factory, implementation=implementation)
     aa = _contract.aa_stack()
@@ -115,6 +122,14 @@ def verify_wallet_address_on_chain(
         raise WalletPredictionError(
             f"RPC is on chain {reported_chain}, expected chain {expected_chain} — refusing to verify"
         )
+
+    uses_book = factory is None and chain_id is None
+    if uses_book or not is_unset(expected_genesis_hash):
+        genesis = resolve_expected_genesis(
+            expected_genesis_hash, _contract.chain_id() if uses_book else expected_chain
+        )
+        if genesis is not None:
+            assert_genesis(lambda method, params: _rpc(url, method, params, timeout), genesis)
 
     code = _rpc(url, "eth_getCode", [f, "latest"], timeout)
     if not isinstance(code, str) or code.lower() in ("", "0x", "0x0"):

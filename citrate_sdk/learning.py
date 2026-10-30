@@ -27,7 +27,12 @@ from eth_account.messages import encode_defunct
 from eth_account.signers.local import LocalAccount
 from eth_utils import keccak
 
-from ._chain_guard import expected_chain_id, pinned_send
+from ._chain_guard import (
+    UNSET,
+    expected_chain_id,
+    pinned_send,
+    resolve_expected_genesis,
+)
 from .abi import AbiInterface, enum_index, from_wei, to_wei
 from .errors import ConfigurationError
 from .types import (
@@ -240,10 +245,13 @@ class LearningManager(_RpcMixin):
         contract_addresses: dict[str, str] | None = None,
         *,
         chain_id: int | None = None,
+        expected_genesis_hash: Any = UNSET,
     ) -> None:
         self._rpc_call = rpc_call
         # PBA-L6b-042: writes assert eth_chainId against this before sending.
         self._expected_chain_id = expected_chain_id(chain_id)
+        # r1006: and block 0 against the vendored genesis (None = no check; see _chain_guard).
+        self._expected_genesis = resolve_expected_genesis(expected_genesis_hash, self._expected_chain_id)
         self._chain_verified = False
         self._default_account = default_account
         self._gas_limit = gas_limit
@@ -528,10 +536,13 @@ class StakingManager(_RpcMixin):
         staking_address: str | None = None,
         *,
         chain_id: int | None = None,
+        expected_genesis_hash: Any = UNSET,
     ) -> None:
         self._rpc_call = rpc_call
         # PBA-L6b-042: writes assert eth_chainId against this before sending.
         self._expected_chain_id = expected_chain_id(chain_id)
+        # r1006: and block 0 against the vendored genesis (None = no check; see _chain_guard).
+        self._expected_genesis = resolve_expected_genesis(expected_genesis_hash, self._expected_chain_id)
         self._chain_verified = False
         self._default_account = default_account
         self._gas_limit = gas_limit
@@ -541,7 +552,11 @@ class StakingManager(_RpcMixin):
 
     def _require_address(self) -> str:
         if not self._staking_address:
-            raise ConfigurationError("LiquidStakingPool contract address not configured.")
+            raise ConfigurationError(
+                "LiquidStakingPool contract address not configured. LiquidStakingPool is not in the "
+                "r1006 address book (it is not deployed in r1006 block 0), so there is no default; "
+                "pass staking_address only for a network that has it."
+            )
         return self._staking_address
 
     def deposit(self, amount: str) -> str:
@@ -700,10 +715,13 @@ class ClassroomManager(_RpcMixin):
         classroom_address: str | None = None,
         *,
         chain_id: int | None = None,
+        expected_genesis_hash: Any = UNSET,
     ) -> None:
         self._rpc_call = rpc_call
         # PBA-L6b-042: writes assert eth_chainId against this before sending.
         self._expected_chain_id = expected_chain_id(chain_id)
+        # r1006: and block 0 against the vendored genesis (None = no check; see _chain_guard).
+        self._expected_genesis = resolve_expected_genesis(expected_genesis_hash, self._expected_chain_id)
         self._chain_verified = False
         self._default_account = default_account
         self._gas_limit = gas_limit

@@ -12,12 +12,15 @@ from typing import Any
 
 import pytest
 
+from citrate_sdk._generated import contract as _contract
 from citrate_sdk.compute import ComputeManager
 from citrate_sdk.learning import LearningManager
 
 
 def _rpc(sent: list[Any]) -> Any:
     def rpc(method: str, params: Any) -> Any:
+        if method == "eth_getBlockByNumber":  # r1006 genesis guard reads block 0
+            return {"number": "0x0", "hash": _contract.genesis_hash()}
         if method == "eth_chainId":
             return hex(40204)
         sent.append((method, params))

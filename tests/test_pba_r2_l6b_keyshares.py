@@ -26,6 +26,7 @@ import rlp  # type: ignore[import-untyped]
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from citrate_sdk import CitrateClient, KeyManager
+from citrate_sdk._generated import contract as _contract
 from citrate_sdk.crypto import EncryptionConfig
 from citrate_sdk.errors import CitrateError
 from citrate_sdk.finite_field import (
@@ -56,6 +57,8 @@ def _client(tmp_path: Path) -> tuple[CitrateClient, dict[str, Any], Path]:
     def fake_rpc(method: str, params: Any = None) -> Any:
         if method == "eth_getTransactionCount":
             return "0x0"
+        if method == "eth_getBlockByNumber":  # r1006 genesis guard reads block 0
+            return {"number": "0x0", "hash": _contract.genesis_hash()}
         if method == "eth_chainId":
             return hex(40204)
         if method == "eth_gasPrice":

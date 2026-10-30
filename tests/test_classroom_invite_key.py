@@ -21,6 +21,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from eth_utils import keccak, to_checksum_address
 
+from citrate_sdk._generated import contract as _contract
 from citrate_sdk.abi import keccak256
 from citrate_sdk.learning import ClassroomManager
 
@@ -38,6 +39,8 @@ def _mgr(account: str, code_to_teacher: dict[bytes, str] | None = None, chain: i
     sent: list[Any] = []
 
     def rpc(method: str, params: Any) -> Any:
+        if method == "eth_getBlockByNumber":  # r1006 genesis guard reads block 0
+            return {"number": "0x0", "hash": _contract.genesis_hash()}
         if method == "eth_chainId":
             return hex(chain)
         if method == "eth_sendTransaction":

@@ -11,6 +11,16 @@ crypto envelope for encrypted inference, an OpenAI-compatible `GatewayClient`, a
 artifact and enforced at signing time (a hostile RPC cannot make you sign for another
 chain). It mirrors the canonical TypeScript SDK (`@citratelabs/sdk`) and may lag it.
 
+Tokenomics are not yet determined; see [docs.citrate.ai](https://docs.citrate.ai).
+
+This release carries the **r1006** address book (citrate-chain
+`contracts/addresses/r1006/40204.json`, genesis block `0xa3651a27…6cdd4`). Two networks can share
+chain id 40204 (r1005 and r1006 do), so before the client or a manager sends a transaction, and
+before `verify_wallet_address_on_chain` trusts the factory, the SDK reads block 0 and raises
+`WrongNetworkError` (`error_code="WRONG_NETWORK"`) unless its hash is that genesis.
+`client.verify_network()` runs the check up front. `LiquidStakingPool` is not in r1006 block 0,
+so `StakingManager` has no default address.
+
 See the concepts in the docs: <https://docs.citrate.ai>.
 Depends on a running chain node ([citrate-chain](https://github.com/CitrateNetwork/citrate-chain))
 and, for inference, the gateway ([citrate-inference-gateway](https://github.com/CitrateNetwork/citrate-inference-gateway)).
@@ -96,11 +106,14 @@ Point the SDK at a local Citrate stack on one machine instead of the public test
    client = CitrateClient(
        rpc_url="http://localhost:8545",
        private_key="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",  # anvil acct #0
+       expected_genesis_hash=None,  # a local devnet is not the r1006 genesis
    )
    assert client.get_chain_id() == 40204
    ```
    The client refuses to sign if the RPC's `eth_chainId` does not match the expected 40204;
-   pass `chain_id=` to override for a custom local chain.
+   pass `chain_id=` to override for a custom local chain. A local devnet has its own genesis,
+   so also pass `expected_genesis_hash=None` (or your devnet's block-0 hash) when it uses
+   chain id 40204.
 3. **Local inference gateway** (optional) — run
    [citrate-inference-gateway](https://github.com/CitrateNetwork/citrate-inference-gateway)
    and point the gateway client at it:
@@ -122,9 +135,10 @@ LOCAL_STACK guide at <https://docs.citrate.ai>.
 | `CITRATE_PRIVATE_KEY` | — | signer key (examples generate an ephemeral one if unset) |
 | `CITRATE_GATEWAY_API_KEY` | — | `cgk_` bearer key for the inference gateway |
 
-`CitrateClient(rpc_url, private_key=None, timeout=..., allow_insecure_http=False, chain_id=None)`.
-The expected chain id (40204) and gateway base URL come from the vendored federation
-artifact; `citrate contract` prints the full table.
+`CitrateClient(rpc_url, private_key=None, timeout=..., allow_insecure_http=False, chain_id=None,
+expected_genesis_hash=<vendored>)`. The expected chain id (40204), genesis hash (r1006) and
+gateway base URL come from the vendored federation artifact; `citrate contract` prints the full
+table. The managers take the same `chain_id=` / `expected_genesis_hash=` keywords.
 
 ## Links
 - Docs: <https://docs.citrate.ai>

@@ -69,7 +69,9 @@ jobs:
   # python CI only runs ruff/mypy/pytest, so vendored-address drift shipped
   # silently. Requires a read-only token for CitrateNetwork/citrate-federation;
   # inert until GitHub Actions + CITRATE_FEDERATION_READ_TOKEN are available (the
-  # local mirror scripts/check-contract-drift.sh runs the identical check).
+  # local mirror scripts/check-contract-drift.sh runs the identical check). Since 0.7.0 the
+  # artifact is the r1006 book and carries chain.genesisHash (r1006 block 0), which the SDK's
+  # network guard enforces and sync_contract.py requires; the federation artifact PR merges first.
   contract-drift:
     runs-on: ubuntu-latest
     # Internal-only gate (checks the vendored artifact against the canonical intermediate in the

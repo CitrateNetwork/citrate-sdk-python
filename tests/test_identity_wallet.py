@@ -1,8 +1,10 @@
 """DEVX-S1 / F2 — embedded wallet prediction (Python parity with JS + on-chain factory).
 
-Pinned to the on-chain CitrateWalletFactory.predictAddress(0x4242…)=0x6Ef76179… (2026-10-06,
-live factory 0x9Ac05AD6… after the 2026-10-06 r1005 re-roll, genesis 0x1dcfc490…),
-the SAME value the JS SDK produces — cross-language byte parity (risk R-2).
+r1006 (genesis 0xa3651a27…): factory 0x6ee3b590…, implementation CitrateWallet 0x2d742b98…
+(unchanged), predictAddress(0x4242…) = 0xEFf9CC17…, computed offline with the formula that
+reproduces r1005's live factory answer 0x6Ef76179… (2026-10-06, factory 0x9Ac05AD6…, genesis
+0x1dcfc490…) byte-for-byte; the JS SDK pins the same values (risk R-2). Re-read the r1006 value
+from the live factory after the public cutover.
 """
 from __future__ import annotations
 
@@ -20,7 +22,15 @@ def _raises(exc, fn):
 
 
 def test_predict_matches_onchain_and_js():
-    assert wallet.predict_wallet_address(USER_ID_4242) == "0x6Ef7617980a1fe91D3449315E8D48f99A68Bb5eA"
+    assert wallet.predict_wallet_address(USER_ID_4242) == "0xEFf9CC174Cdcbe60FF9D8D2b469Fb94008C8336D"
+
+
+def test_formula_reproduces_the_r1005_live_factory_answer():
+    assert wallet.predict_wallet_address(
+        USER_ID_4242,
+        factory="0x9Ac05AD65C9E8E48Fbb41dDE029512afA5346C85",
+        implementation="0x2D742B98D867Fc7363F530DD6d756622e4Eb768D",
+    ) == "0x6Ef7617980a1fe91D3449315E8D48f99A68Bb5eA"
 
 
 def test_predict_uses_artifact_factory_and_impl_by_default():

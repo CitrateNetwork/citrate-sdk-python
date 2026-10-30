@@ -31,6 +31,8 @@ def _rpc(chain_id: int = 40204, code: str = "0x6080", echo: bool = True) -> tupl
         methods.append(body["method"])
         if body["method"] == "eth_chainId":
             result: Any = hex(chain_id)
+        elif body["method"] == "eth_getBlockByNumber":  # r1006 genesis guard reads block 0
+            result = {"number": "0x0", "hash": _contract.genesis_hash()}
         elif body["method"] == "eth_getCode":
             result = code
         elif body["method"] == "eth_call":
@@ -81,7 +83,8 @@ def test_happy_path_checks_chain_then_code_then_prediction() -> None:
     with mock.patch.object(wallet.requests, "post", post):
         assert wallet.verify_wallet_address_on_chain(UID, rpc_url="https://rpc.example") == \
             wallet.predict_wallet_address(UID)
-    assert methods == ["eth_chainId", "eth_getCode", "eth_call"]
+    # r1006: block 0 (the genesis guard) is read between the chain id and the factory code.
+    assert methods == ["eth_chainId", "eth_getBlockByNumber", "eth_getCode", "eth_call"]
 
 
 def test_expected_chain_defaults_to_the_artifact_and_is_overridable() -> None:

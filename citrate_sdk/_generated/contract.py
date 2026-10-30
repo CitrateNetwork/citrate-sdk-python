@@ -26,6 +26,11 @@ def chain_id() -> int:
     return int(federation_contract()["chain"]["chainId"])
 
 
+def genesis_hash() -> str:
+    """Block-0 hash of the network the vendored address book is for (r1006)."""
+    return str(federation_contract()["chain"]["genesisHash"]).lower()
+
+
 def rpc_url() -> str:
     return str(federation_contract()["chain"]["rpcUrl"])
 
