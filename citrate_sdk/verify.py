@@ -525,7 +525,6 @@ def wait_for_verification(
 
 def verify_contract(
     *,
-    chain_id: int,
     address: str,
     contract: str,
     build_info: dict[str, Any] | None = None,
@@ -542,6 +541,7 @@ def verify_contract(
     rate_limit_backoff: float = 5.0,
     allow_insecure_http: bool = False,
     session: requests.Session | None = None,
+    chain_id: int | None = None,
 ) -> VerifyResult:
     """Verify a deployed contract's source on CitrateScan.
 
@@ -553,8 +553,12 @@ def verify_contract(
     ``contract`` is ``path/To.sol:Name`` or a bare ``Name`` when unique in the build-info.
     ``constructor_args`` (ABI-encoded) is optional: the explorer reads them from the creation
     transaction.
+
+    ``chain_id``, when given, is sent as Etherscan v2 ``chainid`` on the submission and on every
+    status call (CitrateScan accepts 40204). When omitted nothing is sent, so an explorer for a
+    local devnet with another chain id works.
     """
-    if not isinstance(chain_id, int) or isinstance(chain_id, bool) or chain_id <= 0:
+    if chain_id is not None and (not isinstance(chain_id, int) or isinstance(chain_id, bool) or chain_id <= 0):
         raise BuildInfoError("chain_id must be a positive integer")
     source = build_info if build_info is not None else (
         {"input": standard_json_input} if standard_json_input is not None else None
@@ -620,7 +624,6 @@ def encode_constructor_args(abi: list[dict[str, Any]], args: Sequence[Any]) -> s
 def deploy_and_verify(
     *,
     client: ContractDeployer,
-    chain_id: int,
     build_info: dict[str, Any],
     contract: str,
     args: Sequence[Any] | None = None,
@@ -638,6 +641,7 @@ def deploy_and_verify(
     rate_limit_backoff: float = 5.0,
     allow_insecure_http: bool = False,
     session: requests.Session | None = None,
+    chain_id: int | None = None,
 ) -> DeployAndVerifyResult:
     """Deploy a contract from a build-info through the client's signer, then verify it.
 

@@ -309,7 +309,8 @@ def test_a_given_chain_id_is_sent_and_a_bad_one_refused(recorder: Any) -> None:
                     explorer_url=srv.url, **FAST)
     assert srv.seen[0].form()["chainid"] == "1337"
     assert srv.seen[1].query()["chainid"] == "1337"
-    for bad in (0, -1, True, 1.5, "40204"):
+    bad_ids: list[Any] = [0, -1, True, 1.5, "40204"]
+    for bad in bad_ids:
         with pytest.raises(BuildInfoError):
             verify_contract(chain_id=bad, address=FORGE_ADDR, build_info=forge_bi(), contract="Greeter")
 
