@@ -60,7 +60,8 @@ def _json(p: Path) -> Any:
 
 
 def forge_bi() -> dict[str, Any]:
-    return _json(FORGE_BI)
+    bi: dict[str, Any] = _json(FORGE_BI)
+    return bi
 
 
 def recorded(name: str) -> list[tuple[str, str, list[tuple[str, str]]]]:

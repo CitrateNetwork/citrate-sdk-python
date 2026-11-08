@@ -128,6 +128,71 @@ Point the SDK at a local Citrate stack on one machine instead of the public test
 For the full multi-repo bring-up (chain → identity → bundler → gateway → SDKs), see the
 LOCAL_STACK guide at <https://docs.citrate.ai>.
 
+## Verify contracts on CitrateScan
+`citrate_sdk.verify` submits Solidity source to CitrateScan, the explorer for chain 40204, through
+its Etherscan-compatible API (`https://explorer.citrate.ai/api`). It POSTs `verifysourcecode`,
+polls `checkverifystatus`, and returns when the explorer has recompiled the source and matched it
+to the code on chain. Input is a forge or hardhat build-info, a hardhat contract artifact, or a
+solc standard JSON input. Only the sources the contract's metadata lists are sent, as forge and
+hardhat-verify do.
+
+```python
+import os
+
+from citrate_sdk import CitrateClient, deploy_and_verify, load_build_info, verify_contract
+
+# forge: `forge build --build-info` writes out/build-info/<id>.json with the compiler input.
+build_info, _ = load_build_info("out/build-info/<id>.json")
+result = verify_contract(
+    chain_id=40204,
+    address="0xYourContractAddress",
+    build_info=build_info,
+    contract="src/MyContract.sol:MyContract",  # or "MyContract" when the name is unique
+    constructor_args="0x...",  # optional: the explorer reads them from the creation transaction
+)
+print(result.status)  # "verified" or "already_verified"
+
+# hardhat: pass the contract artifact; load_build_info follows its .dbg.json.
+bi, contract = load_build_info("artifacts/contracts/MyContract.sol/MyContract.json")
+verify_contract(chain_id=40204, address="0xYourContractAddress", build_info=bi, contract=contract)
+
+# Deploy from the build-info with the client's key (same genesis/chain-id checks as every
+# transaction), then verify with the creation transaction hash.
+client = CitrateClient(rpc_url="https://rpc.citrate.ai", private_key=os.environ["CITRATE_PRIVATE_KEY"])
+deployed = deploy_and_verify(
+    client=client, chain_id=40204, build_info=build_info,
+    contract="src/MyContract.sol:MyContract", args=[7, "hello"],
+)
+print(deployed.address, deployed.tx_hash, deployed.verification.status)
+```
+
+Keywords: `explorer_url` (default `https://explorer.citrate.ai/api`), `api_key` (sent as
+`apikey`; not required), `compiler_version` (otherwise read from the contract metadata),
+`creation_tx_hash`, `wait=False` (return the guid without polling), `poll_interval` (3 s), and
+`timeout` (300 s). `check_verify_status(guid)` and `wait_for_verification(guid)` poll a job you
+submitted earlier. While the explorer has not indexed a just-deployed contract,
+`deploy_and_verify` retries the submission.
+
+Errors subclass `VerificationError` (a `CitrateError`):
+- `BuildInfoError`: bad input, nothing sent. A plain `forge build` without `--build-info` gets
+  this error, with the fix in the message.
+- `VerificationFailedError`: `Fail - Unable to verify`.
+- `VerificationRejectedError`: the explorer's refusal string.
+- `VerificationRateLimitedError`: still rate limited after retries.
+- `VerificationTimeoutError`: no verdict yet. The job may still finish.
+- `ExplorerResponseError`: the explorer could not be reached or gave an unexpected answer.
+
+The explorer accepts at most 64 files and 2 MiB, inline content only.
+
+forge and hardhat can verify against the same API directly. Two details matter on chain 40204:
+- **forge:** use `--verifier custom --verifier-url https://explorer.citrate.ai/api --verifier-api-key citrate`.
+  With forge 1.5.1, `--verifier etherscan` stops before sending anything ("No known Etherscan API
+  URL for chain `40204`"). `--verifier-api-key` must be present, and any value works.
+- **hardhat-verify:** give `etherscan.apiKey` as a per-network object (`{ citrate: "citrate" }`)
+  with a `customChains` entry for chainId 40204 (`apiURL: "https://explorer.citrate.ai/api"`).
+  With hardhat-verify 2.1.3 a single string `apiKey` switches it to Etherscan's v2 mode, which
+  ignores `customChains` and sends the request to api.etherscan.io.
+
 ## Configuration
 | Env var | Default | Purpose |
 |---------|---------|---------|

@@ -502,6 +502,16 @@ class CitrateClient:
         JSON string, which is sent byte-for-byte (see ``deploy_model``).
         """
         encoded = data if isinstance(data, str) else json.dumps(data)
+        return self._sign_and_send(to_address, "0x" + encoded.encode().hex(), value, gas_limit)
+
+    def _sign_and_send(
+        self, to_address: str | None, data_hex: str, value: int, gas_limit: int
+    ) -> str:
+        """Sign ``data_hex`` (0x-prefixed calldata or creation code) and broadcast it.
+
+        ``to_address=None`` is a contract creation. Data source: ``eth_getTransactionCount``,
+        ``eth_chainId`` and ``eth_sendRawTransaction`` on ``rpc_url``.
+        """
         if not self.key_manager:
             raise CitrateError("Private key required for transactions")
 
@@ -515,22 +525,65 @@ class CitrateClient:
         # Build transaction. RM-G.4: bind chainId so the signature is
         # EIP-155 (domain-separated) and cannot be replayed on another
         # Citrate network — the pre-fix tx omitted chainId (pre-EIP-155).
-        tx = {
+        tx: dict[str, Any] = {
             "from": from_address,
-            "to": to_address,
             "value": hex(value),
             "gas": hex(gas_limit),
             "gasPrice": hex(20_000_000_000),  # 20 gwei
             "nonce": hex(nonce),
-            "data": "0x" + encoded.encode().hex(),
+            "data": data_hex,
             "chainId": self._eip155_chain_id(),
         }
+        if to_address is not None:
+            tx["to"] = to_address
 
         # Sign transaction
         signed_tx = self.key_manager.sign_transaction(tx)
 
         # Send raw transaction
         return cast(str, self._rpc_call("eth_sendRawTransaction", [signed_tx]))
+
+    def deploy_contract(
+        self, data: str, value: int = 0, gas_limit: int | None = None, receipt_timeout: int = 120
+    ) -> dict[str, Any]:
+        """Deploy an EVM contract and wait for it to be mined.
+
+        ``data`` is the 0x-prefixed creation code with the ABI-encoded constructor arguments
+        appended. The transaction is signed with this client's key after the genesis and
+        chain-id checks every transaction gets. ``gas_limit`` defaults to ``eth_estimateGas``
+        plus 20%. Returns ``{"address", "tx_hash", "block_number"}``.
+        Data source: ``eth_estimateGas``, ``eth_sendRawTransaction`` and
+        ``eth_getTransactionReceipt`` on ``rpc_url``. Used by
+        :func:`citrate_sdk.verify.deploy_and_verify`.
+        """
+        if not isinstance(data, str) or not data.startswith("0x") or len(data) <= 2:
+            raise CitrateError("deploy_contract: data must be non-empty 0x-prefixed hex")
+        try:
+            bytes.fromhex(data[2:])
+        except ValueError as e:
+            raise CitrateError("deploy_contract: data must be non-empty 0x-prefixed hex") from e
+        if not self.key_manager:
+            raise CitrateError("Private key required for contract deployment")
+        if gas_limit is None:
+            estimate = self._rpc_call(
+                "eth_estimateGas",
+                [{"from": self.key_manager.get_address(), "data": data, "value": hex(value)}],
+            )
+            gas_limit = int(estimate, 16) * 6 // 5
+        tx_hash = self._sign_and_send(None, data, value, gas_limit)
+        receipt = self._wait_for_receipt(tx_hash, timeout=receipt_timeout)
+        status = receipt.get("status")
+        if status is not None and int(str(status), 16) != 1:
+            raise CitrateError(f"Contract creation failed (tx {tx_hash})", "DEPLOY_FAILED", {"tx_hash": tx_hash})
+        address = receipt.get("contractAddress")
+        if not address:
+            raise CitrateError(f"Receipt has no contractAddress (tx {tx_hash})", "DEPLOY_FAILED", {"tx_hash": tx_hash})
+        block = receipt.get("blockNumber")
+        return {
+            "address": address,
+            "tx_hash": tx_hash,
+            "block_number": int(str(block), 16) if block is not None else None,
+        }
 
     def _wait_for_receipt(self, tx_hash: str, timeout: int = 60) -> dict[str, Any]:
         """Wait for transaction receipt"""
