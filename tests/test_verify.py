@@ -553,6 +553,17 @@ def test_deploy_retries_until_indexed(recorder: Any) -> None:
     assert len([s for s in srv.seen if s.method == "POST"]) == 3
 
 
+def test_not_indexed_resubmissions_wait_the_rate_limit_backoff(recorder: Any) -> None:
+    not_yet = json.dumps({"status": "0", "message": "NOTOK", "result": f"Unable to locate ContractCode at {DEPLOYED}"})
+    srv = recorder([(200, not_yet), (200, not_yet), (200, OK_GUID), (200, PASS)])
+    deploy_and_verify(client=RecordingDeployer(), build_info=forge_bi(), contract="Greeter", args=[1, "x"],
+                      explorer_url=srv.url, poll_interval=0.005, rate_limit_backoff=0.15, timeout=5.0)
+    posts = [s for s in srv.seen if s.method == "POST"]
+    assert len(posts) == 3
+    for a, b in zip(posts, posts[1:], strict=False):
+        assert b.at - a.at >= 0.147
+
+
 def test_deploy_refuses_bad_inputs_before_sending() -> None:
     d = RecordingDeployer()
     with pytest.raises(BuildInfoError):
