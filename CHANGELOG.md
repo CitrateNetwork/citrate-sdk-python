@@ -12,8 +12,15 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
   forge or hardhat build-info, a hardhat artifact, or a standard JSON input, with polling and typed
   errors (`VerificationError` and subclasses). Also `load_build_info`, `parse_build_info`,
   `prepare_standard_json`, `check_verify_status`, `wait_for_verification`.
-- `CitrateClient.deploy_contract(data, value=0, gas_limit=None)`: sign and send a
-  contract-creation transaction (same genesis and chain-id checks) and wait for the receipt.
+- `CitrateClient.deploy_contract(data, value=0, gas_limit=None, receipt_timeout=120)`: sign and
+  send a contract-creation transaction (same genesis and chain-id checks) and wait for the receipt
+  (`DEPLOY_FAILED` on a status-0 receipt).
+- Verification details: `chain_id` is optional (sent as `chainid` on the submission and every
+  status call only when given, as `citrate contract verify --chain-id`); transient explorer errors
+  (transport, timeout, HTTP 5xx and 429) are retried while waiting, with a backoff capped by
+  `transient_backoff_max`, and flagged by `ExplorerResponseError.transient`; not-indexed
+  resubmissions wait at least `rate_limit_backoff`; transport-error messages never include the API
+  key or the request's query string.
 
 ## [0.7.0] - 2026-10-27 — r1006 address book and a genesis guard
 
