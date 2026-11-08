@@ -685,7 +685,8 @@ def deploy_and_verify(
     refused) followed by the constructor arguments (``args`` encoded with the contract ABI, or
     already-encoded ``constructor_args``). The creation transaction hash is passed to the
     explorer. While the explorer answers ``Unable to locate ContractCode`` (not indexed yet), the
-    submission is retried until ``index_timeout`` seconds.
+    submission is retried until ``index_timeout`` seconds, waiting the larger of ``poll_interval``
+    and ``rate_limit_backoff`` between submissions.
     """
     bi = parse_build_info(build_info)
     path, name = _resolve_contract(bi, contract)
@@ -734,4 +735,5 @@ def deploy_and_verify(
         except VerificationRejectedError as e:
             if "unable to locate contractcode" not in e.result.lower() or time.monotonic() >= deadline:
                 raise
-            time.sleep(poll_interval)
+            # A resubmission is a verifysourcecode POST: the explorer takes one per 5 s per IP.
+            time.sleep(max(poll_interval, rate_limit_backoff))
