@@ -414,9 +414,9 @@ def test_transient_errors_until_the_deadline_time_out(recorder: Any) -> None:
 def test_backoff_between_transient_errors_is_bounded(recorder: Any) -> None:
     srv = recorder([(503, "x"), (503, "x"), (503, "x"), (503, "x"), (200, PASS)])
     wait_for_verification(GUID, explorer_url=srv.url, poll_interval=0.02, transient_backoff_max=0.05, timeout=5.0)
-    gaps = [b.at - a.at for a, b in zip(srv.seen, srv.seen[1:])]
+    gaps = [b.at - a.at for a, b in zip(srv.seen, srv.seen[1:], strict=False)]
     assert len(gaps) == 4
-    for got, want in zip(gaps, [0.02, 0.04, 0.05, 0.05]):
+    for got, want in zip(gaps, [0.02, 0.04, 0.05, 0.05], strict=True):
         assert want - 0.003 <= got < want + 0.2
 
 

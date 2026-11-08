@@ -97,11 +97,18 @@ class VerificationTimeoutError(VerificationError):
 
 
 class ExplorerResponseError(VerificationError):
-    """The explorer could not be reached, or answered outside the documented envelope."""
+    """The explorer could not be reached, or answered outside the documented envelope.
 
-    def __init__(self, message: str, http_status: int | None = None):
-        super().__init__(message, "VERIFY_EXPLORER_RESPONSE", {"http_status": http_status})
+    ``transient`` is true for a transport failure (connection reset, timeout) and for HTTP 5xx and
+    429: worth retrying later. :func:`wait_for_verification` retries those.
+    """
+
+    def __init__(self, message: str, http_status: int | None = None, transient: bool = False):
+        super().__init__(
+            message, "VERIFY_EXPLORER_RESPONSE", {"http_status": http_status, "transient": transient}
+        )
         self.http_status = http_status
+        self.transient = transient
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +388,11 @@ def _is_rate_limit(text: str) -> bool:
     return "rate limit" in text.lower()
 
 
+def _is_transient(e: requests.RequestException) -> bool:
+    """Connection reset or refused, a timeout, or a body cut short: worth retrying."""
+    return isinstance(e, (requests.ConnectionError, requests.Timeout, requests.exceptions.ChunkedEncodingError))
+
+
 class _Explorer:
     def __init__(
         self,
@@ -405,7 +417,10 @@ class _Explorer:
         if isinstance(body, dict) and isinstance(body.get("status"), (str, int)):
             return _Envelope(str(body["status"]) == "1", str(body.get("message") or ""), body.get("result"))
         if not resp.ok:
-            raise ExplorerResponseError(f"explorer answered HTTP {resp.status_code}: {resp.text[:300]}", resp.status_code)
+            transient = resp.status_code >= 500 or resp.status_code == 429
+            raise ExplorerResponseError(
+                f"explorer answered HTTP {resp.status_code}: {resp.text[:300]}", resp.status_code, transient
+            )
         raise ExplorerResponseError(f"unexpected explorer answer: {resp.text[:300]}", resp.status_code)
 
     def post_form(self, form: list[tuple[str, str]]) -> _Envelope:
@@ -417,7 +432,7 @@ class _Explorer:
                 timeout=self.request_timeout,
             )
         except requests.RequestException as e:
-            raise ExplorerResponseError(f"could not reach the explorer: {e}") from e
+            raise ExplorerResponseError(f"could not reach the explorer: {e}", transient=_is_transient(e)) from e
         return self._parse(resp)
 
     def get(self, pairs: list[tuple[str, str]]) -> _Envelope:
@@ -430,7 +445,7 @@ class _Explorer:
         try:
             resp = self.session.get(self.url + "?" + urlencode(q), timeout=self.request_timeout)
         except requests.RequestException as e:
-            raise ExplorerResponseError(f"could not reach the explorer: {e}") from e
+            raise ExplorerResponseError(f"could not reach the explorer: {e}", transient=_is_transient(e)) from e
         return self._parse(resp)
 
 
@@ -502,25 +517,43 @@ def wait_for_verification(
     chain_id: int | None = None,
     allow_insecure_http: bool = False,
     session: requests.Session | None = None,
+    transient_backoff_max: float = 30.0,
 ) -> VerifyStatus:
-    """Poll until ``Pass - Verified`` (returns) or ``Fail - ...`` (raises :class:`VerificationFailedError`)."""
+    """Poll until ``Pass - Verified`` (returns) or ``Fail - ...`` (raises :class:`VerificationFailedError`).
+
+    A transient :class:`ExplorerResponseError` (transport failure, HTTP 5xx or 429) does not end the
+    wait: the poll is retried after a backoff that doubles from ``poll_interval`` up to
+    ``transient_backoff_max`` seconds, within ``timeout``. Any other error ends it.
+    """
     deadline = time.monotonic() + timeout
+    transient_errors = 0
     while True:
-        s = check_verify_status(
-            guid,
-            explorer_url=explorer_url,
-            api_key=api_key,
-            chain_id=chain_id,
-            allow_insecure_http=allow_insecure_http,
-            session=session,
-        )
-        if s.state == "verified":
-            return s
-        if s.state == "failed":
-            raise VerificationFailedError(guid, s.message)
-        if time.monotonic() + poll_interval > deadline:
-            raise VerificationTimeoutError(guid, s.message)
-        time.sleep(poll_interval)
+        delay = poll_interval
+        try:
+            s = check_verify_status(
+                guid,
+                explorer_url=explorer_url,
+                api_key=api_key,
+                chain_id=chain_id,
+                allow_insecure_http=allow_insecure_http,
+                session=session,
+            )
+        except ExplorerResponseError as e:
+            if not e.transient:
+                raise
+            transient_errors += 1
+            delay = min(poll_interval * 2 ** (transient_errors - 1), max(transient_backoff_max, poll_interval))
+            last = str(e)
+        else:
+            if s.state == "verified":
+                return s
+            if s.state == "failed":
+                raise VerificationFailedError(guid, s.message)
+            transient_errors = 0
+            last = s.message
+        if time.monotonic() + delay > deadline:
+            raise VerificationTimeoutError(guid, last)
+        time.sleep(delay)
 
 
 def verify_contract(
@@ -542,6 +575,7 @@ def verify_contract(
     allow_insecure_http: bool = False,
     session: requests.Session | None = None,
     chain_id: int | None = None,
+    transient_backoff_max: float = 30.0,
 ) -> VerifyResult:
     """Verify a deployed contract's source on CitrateScan.
 
@@ -599,6 +633,7 @@ def verify_contract(
         chain_id=chain_id,
         allow_insecure_http=allow_insecure_http,
         session=session,
+        transient_backoff_max=transient_backoff_max,
     )
     return VerifyResult(status="verified", message=s.message, guid=guid, **base)
 
@@ -642,6 +677,7 @@ def deploy_and_verify(
     allow_insecure_http: bool = False,
     session: requests.Session | None = None,
     chain_id: int | None = None,
+    transient_backoff_max: float = 30.0,
 ) -> DeployAndVerifyResult:
     """Deploy a contract from a build-info through the client's signer, then verify it.
 
@@ -692,6 +728,7 @@ def deploy_and_verify(
                 rate_limit_backoff=rate_limit_backoff,
                 allow_insecure_http=allow_insecure_http,
                 session=session,
+                transient_backoff_max=transient_backoff_max,
             )
             return DeployAndVerifyResult(address, tx_hash, verification)
         except VerificationRejectedError as e:
