@@ -48,6 +48,22 @@ from .types import (
     StakingInfo,
 )
 
+# Contract source verification on CitrateScan (Etherscan-compatible explorer API)
+from .verify import (
+    BuildInfoError,
+    ExplorerResponseError,
+    VerificationError,
+    VerificationFailedError,
+    VerificationRateLimitedError,
+    VerificationRejectedError,
+    VerificationTimeoutError,
+    check_verify_status,
+    deploy_and_verify,
+    load_build_info,
+    verify_contract,
+    wait_for_verification,
+)
+
 __version__ = "0.7.0"
 __author__ = "Citrate Team"
 
@@ -81,6 +97,19 @@ __all__ = [
     "MemoryClient",
     "ByomMemoryClient",
     "MemoryError",
+    # Contract verification
+    "verify_contract",
+    "deploy_and_verify",
+    "load_build_info",
+    "check_verify_status",
+    "wait_for_verification",
+    "VerificationError",
+    "BuildInfoError",
+    "VerificationFailedError",
+    "VerificationRejectedError",
+    "VerificationRateLimitedError",
+    "VerificationTimeoutError",
+    "ExplorerResponseError",
     # Data types
     "LearningPool",
     "CycleStatus",
