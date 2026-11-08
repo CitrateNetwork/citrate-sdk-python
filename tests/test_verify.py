@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 import socket
 import threading
-import traceback
 import time
+import traceback
 from collections.abc import Iterator
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer

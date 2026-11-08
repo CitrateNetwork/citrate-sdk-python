@@ -24,7 +24,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
-from urllib.parse import urlencode
+from urllib.parse import quote, quote_plus, urlencode
 
 import requests
 
@@ -388,6 +388,26 @@ def _is_rate_limit(text: str) -> bool:
     return "rate limit" in text.lower()
 
 
+_URL_QUERY = re.compile(r"\?[^\s'\"()]+")
+
+
+def _transport_error(e: requests.RequestException, api_key: str | None) -> ExplorerResponseError:
+    """An :class:`ExplorerResponseError` for a failed request, without the API key.
+
+    requests names the request URL in its message (``/api?apikey=<key>&...``), so the message is
+    scrubbed: every query string is cut and the key is removed wherever it appears. The caller
+    raises it ``from None``, so the original exception, which carries the same URL, is not chained
+    into the traceback.
+    """
+    text = _URL_QUERY.sub("?<redacted>", str(e))
+    if api_key:
+        for form in {api_key, quote_plus(api_key), quote(api_key, safe="")}:
+            text = text.replace(form, "<redacted>")
+    return ExplorerResponseError(
+        f"could not reach the explorer ({type(e).__name__}): {text}", transient=_is_transient(e)
+    )
+
+
 def _is_transient(e: requests.RequestException) -> bool:
     """Connection reset or refused, a timeout, or a body cut short: worth retrying."""
     return isinstance(e, (requests.ConnectionError, requests.Timeout, requests.exceptions.ChunkedEncodingError))
@@ -432,7 +452,8 @@ class _Explorer:
                 timeout=self.request_timeout,
             )
         except requests.RequestException as e:
-            raise ExplorerResponseError(f"could not reach the explorer: {e}", transient=_is_transient(e)) from e
+            form_key = next((v for k, v in form if k == "apikey"), None)
+            raise _transport_error(e, self.api_key or form_key) from None
         return self._parse(resp)
 
     def get(self, pairs: list[tuple[str, str]]) -> _Envelope:
@@ -445,7 +466,7 @@ class _Explorer:
         try:
             resp = self.session.get(self.url + "?" + urlencode(q), timeout=self.request_timeout)
         except requests.RequestException as e:
-            raise ExplorerResponseError(f"could not reach the explorer: {e}", transient=_is_transient(e)) from e
+            raise _transport_error(e, self.api_key) from None
         return self._parse(resp)
 
 
