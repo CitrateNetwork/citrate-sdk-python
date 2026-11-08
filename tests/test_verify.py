@@ -8,7 +8,9 @@ written by those tools' compilers (see the README there).
 from __future__ import annotations
 
 import json
+import socket
 import threading
+import traceback
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -432,6 +434,44 @@ def test_transport_failures_5xx_and_429_are_transient(recorder: Any) -> None:
         with pytest.raises(ExplorerResponseError) as e:
             check_verify_status("g", explorer_url=srv.url)
         assert (e.value.http_status, e.value.transient) == (status, transient)
+
+
+#: A recognisable probe value standing in for an explorer API key.
+KEY_PROBE = "-".join(["probe", "7f3a9c", "do", "not", "print"])
+
+
+def closed_port_url() -> str:
+    """A loopback URL nothing listens on (connection refused)."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    return f"http://127.0.0.1:{port}/api"
+
+
+def assert_no_key(e: BaseException) -> None:
+    text = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+    for shown in (str(e), repr(e), repr(getattr(e, "details", None)), text):
+        assert KEY_PROBE not in shown
+        assert "apikey=" not in shown
+
+
+def test_connection_error_messages_never_carry_the_api_key() -> None:
+    url = closed_port_url()
+    with pytest.raises(ExplorerResponseError) as status_err:
+        check_verify_status(GUID, explorer_url=url, api_key=KEY_PROBE, chain_id=40204)
+    assert status_err.value.transient
+    assert "could not reach the explorer" in str(status_err.value)
+    assert_no_key(status_err.value)
+
+    with pytest.raises(ExplorerResponseError) as submit_err:
+        verify_contract(address=FORGE_ADDR, build_info=forge_bi(), contract="Greeter", explorer_url=url,
+                        api_key=KEY_PROBE, wait=False)
+    assert_no_key(submit_err.value)
+
+    with pytest.raises(VerificationTimeoutError) as wait_err:
+        wait_for_verification(GUID, explorer_url=url, api_key=KEY_PROBE, poll_interval=0.005, timeout=0.05)
+    assert_no_key(wait_err.value)
+    assert KEY_PROBE not in wait_err.value.last_status
 
 
 def test_already_verified_is_a_result(recorder: Any) -> None:
