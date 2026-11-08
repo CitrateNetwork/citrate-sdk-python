@@ -586,3 +586,49 @@ def test_client_deploy_contract_needs_a_key_and_hex() -> None:
         c.deploy_contract("0x6080")
     with pytest.raises(CitrateError, match="hex"):
         c.deploy_contract("6080")
+
+
+class FakeRpc:
+    """Test-only JSON-RPC answers for CitrateClient._rpc_call (no node)."""
+
+    def __init__(self, receipt: dict[str, Any] | None):
+        self.receipt = receipt
+        self.calls: list[tuple[str, list[Any]]] = []
+
+    def __call__(self, method: str, params: list[Any] | None = None) -> Any:
+        self.calls.append((method, list(params or [])))
+        answers: dict[str, Any] = {
+            "eth_chainId": hex(40204),
+            "eth_getTransactionCount": "0x0",
+            "eth_estimateGas": "0x5208",
+            "eth_sendRawTransaction": TX,
+            "eth_getTransactionReceipt": self.receipt,
+        }
+        return answers[method]
+
+
+def keyed_client(rpc: FakeRpc, monkeypatch: pytest.MonkeyPatch) -> CitrateClient:
+    c = CitrateClient(rpc_url="http://127.0.0.1:1", private_key="0x" + "11" * 32, expected_genesis_hash=None)
+    monkeypatch.setattr(c, "_rpc_call", rpc)
+    return c
+
+
+def test_client_deploy_contract_status_0_is_deploy_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    reverted = FakeRpc({"status": "0x0", "contractAddress": DEPLOYED, "blockNumber": "0x7"})
+    with pytest.raises(CitrateError) as e:
+        keyed_client(reverted, monkeypatch).deploy_contract("0x6080")
+    assert (e.value.error_code, e.value.details) == ("DEPLOY_FAILED", {"tx_hash": TX})
+    sent = [m for m, _ in reverted.calls]
+    assert "eth_sendRawTransaction" in sent and sent[-1] == "eth_getTransactionReceipt"
+
+    no_address = FakeRpc({"status": "0x1", "contractAddress": None, "blockNumber": "0x7"})
+    with pytest.raises(CitrateError, match="no contractAddress") as e:
+        keyed_client(no_address, monkeypatch).deploy_contract("0x6080")
+    assert e.value.error_code == "DEPLOY_FAILED"
+
+    ok = FakeRpc({"status": "0x1", "contractAddress": DEPLOYED, "blockNumber": "0x7"})
+    assert keyed_client(ok, monkeypatch).deploy_contract("0x6080") == {
+        "address": DEPLOYED,
+        "tx_hash": TX,
+        "block_number": 7,
+    }
