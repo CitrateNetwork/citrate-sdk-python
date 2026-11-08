@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,6 +38,7 @@ from citrate_sdk.verify import (
     parse_build_info,
     prepare_standard_json,
     verify_contract,
+    wait_for_verification,
 )
 
 FX = Path(__file__).parent / "fixtures" / "verify"
@@ -85,12 +87,18 @@ def hardhat_post() -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 
 
+#: Script status RESET: drop the connection without answering.
+RESET = 0
+
+
 @dataclass
 class Seen:
     method: str
     path: str
     content_type: str | None
     body: str
+    #: time.monotonic() when the request arrived.
+    at: float = 0.0
 
     def query(self) -> dict[str, str]:
         return dict(parse_qsl(urlsplit(self.path).query, keep_blank_values=True))
@@ -109,8 +117,11 @@ class Recorder:
             def _answer(self) -> None:
                 n = int(self.headers.get("content-length") or 0)
                 body = self.rfile.read(n).decode("utf-8")
-                rec.seen.append(Seen(self.command, self.path, self.headers.get("content-type"), body))
+                rec.seen.append(Seen(self.command, self.path, self.headers.get("content-type"), body, time.monotonic()))
                 status, answer = rec._script.pop(0) if len(rec._script) > 1 else rec._script[0]
+                if status == RESET:
+                    self.close_connection = True
+                    return
                 data = answer.encode("utf-8")
                 self.send_response(status)
                 self.send_header("content-type", "application/json")
@@ -373,6 +384,54 @@ def test_poll_times_out_with_last_status(recorder: Any) -> None:
         verify_contract(chain_id=40204, address=FORGE_ADDR, build_info=forge_bi(), contract="Greeter",
                         explorer_url=srv.url, poll_interval=0.005, timeout=0.06)
     assert (e.value.guid, e.value.last_status) == (GUID, "Pending in queue")
+
+
+def test_reset_5xx_and_429_while_polling_do_not_end_the_wait(recorder: Any) -> None:
+    srv = recorder([(200, OK_GUID), (RESET, ""), (503, "Service Unavailable"), (429, "Too Many Requests"), (200, PASS)])
+    r = verify_contract(address=FORGE_ADDR, build_info=forge_bi(), contract="Greeter", explorer_url=srv.url, **FAST)
+    assert (r.status, r.guid, r.message) == ("verified", GUID, "Pass - Verified")
+    assert len(srv.seen) == 5
+
+
+def test_a_4xx_other_than_429_while_polling_ends_the_wait(recorder: Any) -> None:
+    srv = recorder([(200, OK_GUID), (404, "not found"), (200, PASS)])
+    with pytest.raises(ExplorerResponseError) as e:
+        verify_contract(address=FORGE_ADDR, build_info=forge_bi(), contract="Greeter", explorer_url=srv.url, **FAST)
+    assert (e.value.http_status, e.value.transient) == (404, False)
+    assert len(srv.seen) == 2
+
+
+def test_transient_errors_until_the_deadline_time_out(recorder: Any) -> None:
+    srv = recorder([(200, OK_GUID), (503, "Service Unavailable")])
+    with pytest.raises(VerificationTimeoutError) as e:
+        verify_contract(address=FORGE_ADDR, build_info=forge_bi(), contract="Greeter", explorer_url=srv.url,
+                        poll_interval=0.005, timeout=0.15)
+    assert e.value.guid == GUID
+    assert "HTTP 503" in e.value.last_status
+    assert len(srv.seen) > 2
+
+
+def test_backoff_between_transient_errors_is_bounded(recorder: Any) -> None:
+    srv = recorder([(503, "x"), (503, "x"), (503, "x"), (503, "x"), (200, PASS)])
+    wait_for_verification(GUID, explorer_url=srv.url, poll_interval=0.02, transient_backoff_max=0.05, timeout=5.0)
+    gaps = [b.at - a.at for a, b in zip(srv.seen, srv.seen[1:])]
+    assert len(gaps) == 4
+    for got, want in zip(gaps, [0.02, 0.04, 0.05, 0.05]):
+        assert want - 0.003 <= got < want + 0.2
+
+
+def test_transport_failures_5xx_and_429_are_transient(recorder: Any) -> None:
+    cases: list[tuple[tuple[int, str], int | None, bool]] = [
+        ((503, "down"), 503, True),
+        ((429, "slow down"), 429, True),
+        ((RESET, ""), None, True),
+        ((200, '{"verified": true}'), 200, False),
+    ]
+    for answer, status, transient in cases:
+        srv = recorder([answer])
+        with pytest.raises(ExplorerResponseError) as e:
+            check_verify_status("g", explorer_url=srv.url)
+        assert (e.value.http_status, e.value.transient) == (status, transient)
 
 
 def test_already_verified_is_a_result(recorder: Any) -> None:
