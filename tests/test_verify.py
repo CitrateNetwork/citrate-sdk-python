@@ -292,6 +292,28 @@ def test_submit_poll_pending_to_pass(recorder: Any) -> None:
         }
 
 
+def test_without_chain_id_no_chainid_is_sent_anywhere(recorder: Any) -> None:
+    srv = recorder([(200, OK_GUID), (200, PENDING), (200, PASS)])
+    r = verify_contract(address=FORGE_ADDR, build_info=forge_bi(), contract="Greeter", explorer_url=srv.url,
+                        api_key="citrate", **FAST)
+    assert r.status == "verified"
+    assert len(srv.seen) == 3
+    assert "chainid" not in srv.seen[0].form()
+    for s in srv.seen[1:]:
+        assert s.query() == {"apikey": "citrate", "module": "contract", "action": "checkverifystatus", "guid": GUID}
+
+
+def test_a_given_chain_id_is_sent_and_a_bad_one_refused(recorder: Any) -> None:
+    srv = recorder([(200, OK_GUID), (200, PASS)])
+    verify_contract(chain_id=1337, address=FORGE_ADDR, build_info=forge_bi(), contract="Greeter",
+                    explorer_url=srv.url, **FAST)
+    assert srv.seen[0].form()["chainid"] == "1337"
+    assert srv.seen[1].query()["chainid"] == "1337"
+    for bad in (0, -1, True, 1.5, "40204"):
+        with pytest.raises(BuildInfoError):
+            verify_contract(chain_id=bad, address=FORGE_ADDR, build_info=forge_bi(), contract="Greeter")
+
+
 def test_sends_what_hardhat_verify_sends(recorder: Any) -> None:
     srv = recorder([(200, OK_GUID)])
     bi, contract = load_build_info(HH_ARTIFACT)
@@ -444,6 +466,22 @@ def test_deploy_then_verify_with_creation_tx(recorder: Any) -> None:
     assert body["creationtxhash"] == TX
     assert body["constructorArguements"] == encoded
     assert body["contractname"] == "src/Greeter.sol:Greeter"
+
+
+def test_deploy_chain_id_is_optional(recorder: Any) -> None:
+    without = recorder([(200, OK_GUID), (200, PENDING), (200, PASS)])
+    deploy_and_verify(client=RecordingDeployer(), build_info=forge_bi(), contract="Greeter", args=[1, "x"],
+                      explorer_url=without.url, **FAST)
+    assert len(without.seen) == 3
+    assert "chainid" not in without.seen[0].form()
+    assert all("chainid" not in s.query() for s in without.seen[1:])
+
+    with_id = recorder([(200, OK_GUID), (200, PENDING), (200, PASS)])
+    deploy_and_verify(client=RecordingDeployer(), chain_id=40204, build_info=forge_bi(), contract="Greeter",
+                      args=[1, "x"], explorer_url=with_id.url, **FAST)
+    assert len(with_id.seen) == 3
+    assert with_id.seen[0].form()["chainid"] == "40204"
+    assert all(s.query()["chainid"] == "40204" for s in with_id.seen[1:])
 
 
 def test_deploy_retries_until_indexed(recorder: Any) -> None:
