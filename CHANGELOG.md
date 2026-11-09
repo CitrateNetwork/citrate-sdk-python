@@ -22,6 +22,13 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
   resubmissions wait at least `rate_limit_backoff`; transport-error messages never include the API
   key or the request's query string.
 
+### Fixed (review follow-up on #21)
+
+- `wait_for_verification`: the transient backoff exponent is clamped (`transient_backoff`) and
+  `poll_interval` is at least `MIN_POLL_INTERVAL` (5 ms), so `poll_interval=0` no longer retries in
+  a tight loop and `poll_interval=0.0` with `transient_backoff_max=0.0` can no longer raise
+  `OverflowError` after 1024 consecutive transient errors.
+
 ## [0.7.0] - 2026-10-27 — r1006 address book and a genesis guard
 
 Held for the r1006 public cutover: publish only after rpc.citrate.ai serves r1006.
