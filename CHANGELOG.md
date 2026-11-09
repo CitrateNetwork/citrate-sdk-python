@@ -5,6 +5,12 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-08 — contract verification on CitrateScan
+
+Minor release: new API only, nothing removed or changed in an incompatible way. Publish once the
+CitrateScan verify API (v2) serves `verifysourcecode` / `checkverifystatus` at
+`DEFAULT_EXPLORER_URL`.
+
 ### Added
 
 - `citrate_sdk.verify`: `verify_contract` and `deploy_and_verify` verify Solidity source on
