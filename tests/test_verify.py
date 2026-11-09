@@ -8,6 +8,7 @@ written by those tools' compilers (see the README there).
 from __future__ import annotations
 
 import json
+import math
 import socket
 import threading
 import time
@@ -20,6 +21,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
 import pytest
+import requests
 from eth_abi import encode
 
 import citrate_sdk
@@ -27,6 +29,7 @@ from citrate_sdk import CitrateClient
 from citrate_sdk.errors import CitrateError
 from citrate_sdk.verify import (
     DEFAULT_EXPLORER_URL,
+    MIN_POLL_INTERVAL,
     BuildInfoError,
     ExplorerResponseError,
     VerificationFailedError,
@@ -39,6 +42,7 @@ from citrate_sdk.verify import (
     load_build_info,
     parse_build_info,
     prepare_standard_json,
+    transient_backoff,
     verify_contract,
     wait_for_verification,
 )
@@ -420,6 +424,53 @@ def test_backoff_between_transient_errors_is_bounded(recorder: Any) -> None:
     assert len(gaps) == 4
     for got, want in zip(gaps, [0.02, 0.04, 0.05, 0.05], strict=True):
         assert want - 0.003 <= got < want + 0.2
+
+
+class _AlwaysResetSession(requests.Session):
+    """Test-only session: every GET fails like a connection reset, and is counted."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def get(self, url: Any, **kwargs: Any) -> Any:
+        self.calls += 1
+        raise requests.ConnectionError("connection reset by peer")
+
+
+def test_zero_poll_interval_and_backoff_max_still_back_off() -> None:
+    # Both 0.0: the doubling stayed at 0 (a tight retry loop) and 0.0 * 2**1024 raised
+    # OverflowError after 1024 consecutive transient errors instead of timing out.
+    session = _AlwaysResetSession()
+    t0 = time.monotonic()
+    with pytest.raises(VerificationTimeoutError) as e:
+        wait_for_verification(GUID, explorer_url="https://explorer.example/api", session=session,
+                              poll_interval=0.0, transient_backoff_max=0.0, timeout=0.3)
+    assert "ConnectionError" in e.value.last_status
+    # MIN_POLL_INTERVAL (5 ms) between attempts: about 60 calls in 0.3 s, never thousands.
+    assert 2 <= session.calls <= 0.3 / MIN_POLL_INTERVAL + 5
+    assert time.monotonic() - t0 < 2.0
+
+
+def test_zero_poll_interval_backoff_doubles_to_the_cap() -> None:
+    session = _AlwaysResetSession()
+    with pytest.raises(VerificationTimeoutError):
+        wait_for_verification(GUID, explorer_url="https://explorer.example/api", session=session,
+                              poll_interval=0, transient_backoff_max=1.0, timeout=0.3)
+    # 5, 10, 20, 40, 80, 160 ms fits 0.3 s in about 7 calls.
+    assert 2 <= session.calls < 12
+
+
+def test_transient_backoff_is_finite_and_capped() -> None:
+    assert transient_backoff(0.02, 1, 0.05) == 0.02
+    assert transient_backoff(0.02, 2, 0.05) == 0.04
+    assert transient_backoff(0.02, 3, 0.05) == 0.05
+    for n in (1, 30, 1024, 1025, 5000, 10**18):
+        for interval in (0.0, 0.001, 3.0):
+            for cap in (0.0, 30.0):
+                d = transient_backoff(interval, n, cap)
+                assert math.isfinite(d)
+                assert MIN_POLL_INTERVAL <= d <= max(cap, interval, MIN_POLL_INTERVAL)
 
 
 def test_transport_failures_5xx_and_429_are_transient(recorder: Any) -> None:

@@ -5,6 +5,12 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-08 — contract verification on CitrateScan
+
+Minor release: new API only, nothing removed or changed in an incompatible way. Publish once the
+CitrateScan verify API (v2) serves `verifysourcecode` / `checkverifystatus` at
+`DEFAULT_EXPLORER_URL`.
+
 ### Added
 
 - `citrate_sdk.verify`: `verify_contract` and `deploy_and_verify` verify Solidity source on
@@ -21,6 +27,13 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
   `transient_backoff_max`, and flagged by `ExplorerResponseError.transient`; not-indexed
   resubmissions wait at least `rate_limit_backoff`; transport-error messages never include the API
   key or the request's query string.
+
+### Fixed (review follow-up on #21)
+
+- `wait_for_verification`: the transient backoff exponent is clamped (`transient_backoff`) and
+  `poll_interval` is at least `MIN_POLL_INTERVAL` (5 ms), so `poll_interval=0` no longer retries in
+  a tight loop and `poll_interval=0.0` with `transient_backoff_max=0.0` can no longer raise
+  `OverflowError` after 1024 consecutive transient errors.
 
 ## [0.7.0] - 2026-10-27 — r1006 address book and a genesis guard
 

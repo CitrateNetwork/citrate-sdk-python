@@ -177,7 +177,8 @@ Keywords:
 - `poll_interval` (3 s) and `timeout` (300 s) for the status polling. A transient error while
   polling (connection reset, request timeout, HTTP 5xx or 429) does not end the wait: the poll is
   retried with a backoff that doubles from `poll_interval` up to `transient_backoff_max` (30 s),
-  within `timeout`. A 4xx other than 429, or a `Fail` verdict, ends it.
+  within `timeout`. A 4xx other than 429, or a `Fail` verdict, ends it. `poll_interval` is at
+  least `MIN_POLL_INTERVAL` (5 ms), so 0 does not retry in a tight loop.
 - `rate_limit_retries` (3) and `rate_limit_backoff` (5 s) for `Max rate limit reached`. The
   explorer takes one submission per 5 s per IP, so while it has not indexed a just-deployed
   contract, `deploy_and_verify` resubmits at most every `max(poll_interval, rate_limit_backoff)`

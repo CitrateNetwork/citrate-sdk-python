@@ -32,6 +32,13 @@ from ._url_security import enforce_transport_security
 from .errors import CitrateError
 
 DEFAULT_EXPLORER_URL = "https://explorer.citrate.ai/api"
+
+#: Shortest wait in seconds between two status polls, whatever ``poll_interval`` says (0 would
+#: retry in a tight loop).
+MIN_POLL_INTERVAL = 0.005
+
+#: The doubling stops here; 2**30 times any interval already exceeds every sensible cap.
+_MAX_BACKOFF_EXPONENT = 30
 #: Explorer limits (CitrateScan docs, "Limits").
 MAX_SOURCE_BYTES = 2 * 1024 * 1024
 MAX_SOURCE_FILES = 64
@@ -528,6 +535,19 @@ def check_verify_status(
     return VerifyStatus("failed", text)
 
 
+def transient_backoff(poll_interval: float, transient_errors: int, transient_backoff_max: float) -> float:
+    """The wait in seconds after the ``transient_errors``-th consecutive transient error.
+
+    ``poll_interval`` (at least :data:`MIN_POLL_INTERVAL`) doubled per error, capped at
+    ``transient_backoff_max`` (or the interval, if larger). The exponent is clamped, so the result
+    is finite for any error count and never raises ``OverflowError``.
+    """
+    base = max(float(poll_interval), MIN_POLL_INTERVAL)
+    exponent = min(max(transient_errors - 1, 0), _MAX_BACKOFF_EXPONENT)
+    delay: float = base * 2.0**exponent
+    return min(delay, max(float(transient_backoff_max), base))
+
+
 def wait_for_verification(
     guid: str,
     *,
@@ -544,8 +564,10 @@ def wait_for_verification(
 
     A transient :class:`ExplorerResponseError` (transport failure, HTTP 5xx or 429) does not end the
     wait: the poll is retried after a backoff that doubles from ``poll_interval`` up to
-    ``transient_backoff_max`` seconds, within ``timeout``. Any other error ends it.
+    ``transient_backoff_max`` seconds (see :func:`transient_backoff`), within ``timeout``. Any other
+    error ends it. ``poll_interval`` is at least :data:`MIN_POLL_INTERVAL`.
     """
+    poll_interval = max(float(poll_interval), MIN_POLL_INTERVAL)
     deadline = time.monotonic() + timeout
     transient_errors = 0
     while True:
@@ -563,7 +585,7 @@ def wait_for_verification(
             if not e.transient:
                 raise
             transient_errors += 1
-            delay = min(poll_interval * 2 ** (transient_errors - 1), max(transient_backoff_max, poll_interval))
+            delay = transient_backoff(poll_interval, transient_errors, transient_backoff_max)
             last = str(e)
         else:
             if s.state == "verified":
