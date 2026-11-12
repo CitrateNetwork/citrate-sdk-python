@@ -8,7 +8,7 @@ moved funds there. ``pinned_send`` asserts ``eth_chainId`` against the expected
 chain once per manager, then sends with ``chainId`` in the tx so an honest node
 also rejects a mismatch itself.
 
-r1005 and r1006 share chain id 40204, so the chain id alone cannot tell them
+r1005, r1006 and r1007 share chain id 40204, so the chain id alone cannot tell them
 apart. ``assert_genesis`` reads block 0 (``eth_getBlockByNumber``) and compares
 its hash with the genesis of the vendored address book; ``pinned_send`` and
 ``CitrateClient`` run it once before the first send.
