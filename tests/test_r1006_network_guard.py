@@ -1,10 +1,11 @@
-"""r1006 address book + genesis guard.
+"""r1007 address book + genesis guard (file name kept from the r1006 version).
 
-r1005 and r1006 share chain id 40204, so the SPY-B-005 / PBA-L6b-042 chain-id pins cannot
-tell them apart. The vendored artifact is the r1006 book (citrate-chain
-``contracts/addresses/r1006/40204.json`` via citrate-federation gen-contract) and carries the
-r1006 block-0 hash (``R1006_GENESIS`` in citrate-chain core/consensus/src/hardening.rs). Every
-write path and the on-chain wallet verification read block 0 first and refuse another network.
+r1005, r1006 and r1007 share chain id 40204, so the SPY-B-005 / PBA-L6b-042 chain-id pins cannot
+tell them apart. The vendored artifact is the r1007 root book (citrate-chain
+``contracts/addresses/40204.json`` via citrate-federation gen-contract) and carries the r1007
+block-0 hash (``R1007_GENESIS`` in citrate-chain core/consensus/src/hardening.rs). Every write
+path and the on-chain wallet verification read block 0 first and refuse another network,
+including r1006, which the book just left.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ from citrate_sdk.errors import CitrateError, ConfigurationError, WrongNetworkErr
 from citrate_sdk.identity import wallet
 from citrate_sdk.learning import StakingManager
 
+R1007 = "0xcf68634502b4fca1e977ac8dd35aa006bb40c04208d5cd55f1c2b508bba96631"
 R1006 = "0xa3651a272fe411948cbb4cf7cca4cee44be4248d32ab4376cea7636821c6cdd4"
 R1005 = "0x1dcfc4909dd9fdcb0f03c823d627e4b2032cc86bef5fc4561030d6c64b9775f1"
 KEY = "0x" + "11" * 32
@@ -31,26 +33,35 @@ ADDRS = dict.fromkeys(("computePool", "disputeResolution"), "0x" + "02" * 20)
 
 # ── the vendored book ────────────────────────────────────────────────────────
 
-def test_artifact_carries_the_r1006_genesis() -> None:
-    assert contract.genesis_hash() == R1006
+def test_artifact_carries_the_r1007_genesis() -> None:
+    assert contract.genesis_hash() == R1007
 
 
-def test_book_points_at_r1006_contracts() -> None:
+def test_book_points_at_r1007_contracts() -> None:
     aa = contract.aa_stack()
     assert aa["CitrateWalletFactory"].lower() == "0x6ee3b59099c9c812cdf1c9e7e6ff166b2558434c"
     assert aa["CitratePaymaster"].lower() == "0x5a1e2d73f8154a01a78b56e551c977cb8327ff56"
     assert contract.contracts()["ComputeMarketplace"].lower() == "0x2fec2ac1dde3a1a749c84d487738904cd2ed50c2"
 
 
-def test_book_drops_contracts_not_in_r1006_block_0() -> None:
+def test_book_drops_retired_contracts_and_carries_the_r1007_post_genesis_ones() -> None:
     names = contract.contracts()
-    for gone in ("LiquidStakingPool", "CitAgentTimelock", "DefensePrimeComplianceRegistry", "TenantHierarchy"):
+    for gone in ("LiquidStakingPool", "CitAgentTimelock"):
         assert gone not in names
+    # The root book folds the post-genesis contracts in: r1007 POSTGENESIS_DEPLOYER nonce 0.
+    assert names["TenantHierarchy"].lower() == "0x92f2bc7e1b33841de1b138fe28cf202222562cc3"
+    assert "DefensePrimeComplianceRegistry" in names
 
 
-def test_staking_manager_says_liquid_staking_is_not_in_r1006() -> None:
-    with pytest.raises(ConfigurationError, match="not in the r1006 address book"):
-        StakingManager(_manager_rpc(R1006)[0], default_account=ACCT).deposit("1")
+def test_no_r1006_post_genesis_address_leaks() -> None:
+    blob = json.dumps(contract.federation_contract()).lower()
+    for dead in ("0xe1c16749", "0xb0772491", "0x82224833", "0xf2359912", "0x5924d1d3"):
+        assert dead not in blob, dead
+
+
+def test_staking_manager_says_liquid_staking_is_not_in_r1007() -> None:
+    with pytest.raises(ConfigurationError, match="not in the r1007 address book"):
+        StakingManager(_manager_rpc(R1007)[0], default_account=ACCT).deposit("1")
 
 
 def test_no_r1005_address_leaks() -> None:
@@ -81,17 +92,17 @@ def _client(genesis: Any, **kw: Any) -> tuple[CitrateClient, list[str]]:
     return c, methods
 
 
-def test_client_refuses_an_r1005_node_naming_both_hashes() -> None:
-    c, _ = _client(R1005)
+def test_client_refuses_an_r1006_node_naming_both_hashes() -> None:
+    c, _ = _client(R1006)
     with pytest.raises(WrongNetworkError) as e:
         c.verify_network()
-    assert R1005 in str(e.value) and R1006 in str(e.value)
+    assert R1006 in str(e.value) and R1007 in str(e.value)
     assert e.value.error_code == "WRONG_NETWORK"
     assert isinstance(e.value, CitrateError)
 
 
-def test_client_accepts_r1006_in_any_case_and_checks_once() -> None:
-    c, methods = _client(R1006.upper().replace("0X", "0x"))
+def test_client_accepts_r1007_in_any_case_and_checks_once() -> None:
+    c, methods = _client(R1007.upper().replace("0X", "0x"))
     c.verify_network()
     c.verify_network()
     assert methods.count("eth_getBlockByNumber") == 1
@@ -105,7 +116,7 @@ def test_client_fails_closed_without_block_0(genesis: Any) -> None:
 
 
 def test_client_failure_is_not_cached() -> None:
-    c, methods = _client(R1005)
+    c, methods = _client(R1006)
     for _ in range(2):
         with pytest.raises(WrongNetworkError):
             c.verify_network()
@@ -113,25 +124,25 @@ def test_client_failure_is_not_cached() -> None:
 
 
 def test_client_send_refuses_before_signing_on_another_network() -> None:
-    c, methods = _client(R1005)
+    c, methods = _client(R1006)
     with pytest.raises(WrongNetworkError):
         c._send_transaction("0x" + "00" * 19 + "01", {"x": 1})
     assert "eth_sendRawTransaction" not in methods
 
 
-def test_client_send_goes_through_on_r1006() -> None:
-    c, methods = _client(R1006)
+def test_client_send_goes_through_on_r1007() -> None:
+    c, methods = _client(R1007)
     c._send_transaction("0x" + "00" * 19 + "01", {"x": 1})
     assert "eth_sendRawTransaction" in methods
 
 
 def test_client_override_and_opt_out() -> None:
-    off, methods = _client(R1005, expected_genesis_hash=None)
+    off, methods = _client(R1006, expected_genesis_hash=None)
     off.verify_network()
     assert "eth_getBlockByNumber" not in methods
-    pinned, _ = _client(R1005, expected_genesis_hash=R1005)
+    pinned, _ = _client(R1006, expected_genesis_hash=R1006)
     pinned.verify_network()
-    dev, dev_methods = _client(R1005, chain_id=31337)
+    dev, dev_methods = _client(R1006, chain_id=31337)
     dev.verify_network()
     assert "eth_getBlockByNumber" not in dev_methods
     with pytest.raises(CitrateError, match="expected_genesis_hash"):
@@ -154,15 +165,15 @@ def _manager_rpc(genesis: str) -> tuple[Any, list[str]]:
     return rpc, methods
 
 
-def test_manager_write_refuses_an_r1005_node_before_sending() -> None:
-    rpc, methods = _manager_rpc(R1005)
+def test_manager_write_refuses_an_r1006_node_before_sending() -> None:
+    rpc, methods = _manager_rpc(R1006)
     with pytest.raises(WrongNetworkError):
         ComputeManager(rpc, default_account=ACCT, contract_addresses=ADDRS).heartbeat()
     assert "eth_sendTransaction" not in methods
 
 
-def test_manager_write_sends_on_r1006_and_checks_once() -> None:
-    rpc, methods = _manager_rpc(R1006)
+def test_manager_write_sends_on_r1007_and_checks_once() -> None:
+    rpc, methods = _manager_rpc(R1007)
     mgr = ComputeManager(rpc, default_account=ACCT, contract_addresses=ADDRS)
     mgr.heartbeat()
     mgr.heartbeat()
@@ -189,7 +200,7 @@ def _switching_manager_rpc(answers: list[Any]) -> tuple[Any, list[str]]:
 
 def test_manager_failure_is_not_cached() -> None:
     """A failed genesis check must not mark the manager verified: a second write refuses too."""
-    rpc, methods = _manager_rpc(R1005)
+    rpc, methods = _manager_rpc(R1006)
     mgr = ComputeManager(rpc, default_account=ACCT, contract_addresses=ADDRS)
     for _ in range(2):
         with pytest.raises(WrongNetworkError):
@@ -200,7 +211,7 @@ def test_manager_failure_is_not_cached() -> None:
 
 
 def test_manager_rechecks_after_a_failure_and_then_caches_success() -> None:
-    rpc, methods = _switching_manager_rpc([R1005, R1006])
+    rpc, methods = _switching_manager_rpc([R1006, R1007])
     mgr = ComputeManager(rpc, default_account=ACCT, contract_addresses=ADDRS)
     with pytest.raises(WrongNetworkError):
         mgr.heartbeat()
@@ -222,11 +233,11 @@ def test_manager_fails_closed_when_block_0_is_unreadable(answer: Any) -> None:
 
 
 def test_manager_override_and_opt_out() -> None:
-    rpc, methods = _manager_rpc(R1005)
+    rpc, methods = _manager_rpc(R1006)
     ComputeManager(rpc, default_account=ACCT, contract_addresses=ADDRS, expected_genesis_hash=None).heartbeat()
     assert "eth_getBlockByNumber" not in methods
-    rpc2, _ = _manager_rpc(R1005)
-    ComputeManager(rpc2, default_account=ACCT, contract_addresses=ADDRS, expected_genesis_hash=R1005).heartbeat()
+    rpc2, _ = _manager_rpc(R1006)
+    ComputeManager(rpc2, default_account=ACCT, contract_addresses=ADDRS, expected_genesis_hash=R1006).heartbeat()
 
 
 # ── verify_wallet_address_on_chain ───────────────────────────────────────────
@@ -254,13 +265,13 @@ def _wallet_post(genesis: str) -> Any:
     return fake_post
 
 
-def test_wallet_verify_refuses_an_r1005_node() -> None:
-    with mock.patch.object(wallet.requests, "post", _wallet_post(R1005)):
+def test_wallet_verify_refuses_an_r1006_node() -> None:
+    with mock.patch.object(wallet.requests, "post", _wallet_post(R1006)):
         with pytest.raises(WrongNetworkError):
             wallet.verify_wallet_address_on_chain(UID, rpc_url="https://rpc.example")
 
 
-def test_wallet_verify_passes_on_r1006() -> None:
-    with mock.patch.object(wallet.requests, "post", _wallet_post(R1006)):
+def test_wallet_verify_passes_on_r1007() -> None:
+    with mock.patch.object(wallet.requests, "post", _wallet_post(R1007)):
         assert wallet.verify_wallet_address_on_chain(UID, rpc_url="https://rpc.example") == \
             wallet.predict_wallet_address(UID)
