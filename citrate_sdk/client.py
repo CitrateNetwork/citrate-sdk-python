@@ -83,9 +83,9 @@ class CitrateClient:
                 (e.g. Ethereum mainnet). Pass an explicit value only when
                 genuinely targeting a different Citrate network.
             expected_genesis_hash: the block-0 hash the RPC must report before the
-                client signs a transaction. r1005 and r1006 share chain id 40204,
+                client signs a transaction. r1005, r1006 and r1007 share chain id 40204,
                 so the chain id alone cannot tell them apart. Defaults to the
-                vendored address book's genesis (r1006) when ``chain_id`` is the
+                vendored address book's genesis (r1007 today) when ``chain_id`` is the
                 vendored chain, and to no check for another ``chain_id``. Pass a
                 hash for another network, or ``None`` to skip (a local dev chain).
         """

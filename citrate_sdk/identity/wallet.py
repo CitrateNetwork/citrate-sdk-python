@@ -102,7 +102,7 @@ def verify_wallet_address_on_chain(
     MITM or a wrong-chain RPC cannot make "verified" pass by echoing the
     publicly computable prediction.
 
-    r1006: the same chain id is not the same network (r1005 and r1006 are both 40204).
+    r1006: the same chain id is not the same network (r1005, r1006 and r1007 are all 40204).
     When neither ``factory`` nor ``chain_id`` is overridden (the vendored book is being
     verified), block 0 must be the book's genesis; ``expected_genesis_hash`` overrides it and
     ``None`` skips it. Raises ``WrongNetworkError`` otherwise.

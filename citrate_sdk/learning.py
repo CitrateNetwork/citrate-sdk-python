@@ -554,7 +554,7 @@ class StakingManager(_RpcMixin):
         if not self._staking_address:
             raise ConfigurationError(
                 "LiquidStakingPool contract address not configured. LiquidStakingPool is not in the "
-                "r1006 address book (it is not deployed in r1006 block 0), so there is no default; "
+                "r1007 address book (it is not deployed on r1007, as on r1006), so there is no default; "
                 "pass staking_address only for a network that has it."
             )
         return self._staking_address
