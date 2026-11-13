@@ -5,6 +5,24 @@ All notable changes to `citrate-labs-sdk` are documented here. This project adhe
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-12: the r1007 network
+
+Breaking (0.x minor): the vendored address book and the genesis check move from r1006 to r1007
+(live 2026-11-12T14:00Z). A client or manager of this version refuses an r1006 node.
+
+### Changed
+
+- `citrate_sdk/_generated/federation_contract.json` is the r1007 federation contract
+  (citrate-federation#579, built from citrate-chain's root book). The expected genesis is r1007's
+  block 0, `0xcf68634502b4fca1e977ac8dd35aa006bb40c04208d5cd55f1c2b508bba96631`.
+  `CitrateClient`, the write-path managers (`pinned_send`) and
+  `verify_wallet_address_on_chain` raise `WrongNetworkError` (`WRONG_NETWORK`) on an r1006 node,
+  as they did on r1005. To keep talking to another network, pass `expected_genesis_hash=`.
+- The block-0 contract and account-abstraction addresses are unchanged (CREATE2). The 28
+  contracts deployed after block 0 (TenantHierarchy, the Quorum registries, the DefensePrime
+  registries and others) moved to the r1007 post-genesis deployer's addresses. The root book folds
+  them into `contracts()` under their own keys, for example `TenantHierarchy`.
+
 ## [0.8.0] - 2026-11-08 — contract verification on CitrateScan
 
 Minor release: new API only, nothing removed or changed in an incompatible way. Publish once the

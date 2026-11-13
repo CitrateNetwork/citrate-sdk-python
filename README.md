@@ -13,12 +13,12 @@ chain). It mirrors the canonical TypeScript SDK (`@citratelabs/sdk`) and may lag
 
 Tokenomics are not yet determined; see [docs.citrate.ai](https://docs.citrate.ai).
 
-This release carries the **r1006** address book (citrate-chain
-`contracts/addresses/r1006/40204.json`, genesis block `0xa3651a27…6cdd4`). Two networks can share
-chain id 40204 (r1005 and r1006 do), so before the client or a manager sends a transaction, and
+This release carries the **r1007** address book (citrate-chain's root book
+`contracts/addresses/40204.json`, genesis block `0xcf686345…ba96631`). Several networks share
+chain id 40204 (r1005, r1006 and r1007 do), so before the client or a manager sends a transaction, and
 before `verify_wallet_address_on_chain` trusts the factory, the SDK reads block 0 and raises
 `WrongNetworkError` (`error_code="WRONG_NETWORK"`) unless its hash is that genesis.
-`client.verify_network()` runs the check up front. `LiquidStakingPool` is not in r1006 block 0,
+`client.verify_network()` runs the check up front. `LiquidStakingPool` is not deployed on r1007 (nor on r1006),
 so `StakingManager` has no default address.
 
 See the concepts in the docs: <https://docs.citrate.ai>.
@@ -106,7 +106,7 @@ Point the SDK at a local Citrate stack on one machine instead of the public test
    client = CitrateClient(
        rpc_url="http://localhost:8545",
        private_key="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",  # anvil acct #0
-       expected_genesis_hash=None,  # a local devnet is not the r1006 genesis
+       expected_genesis_hash=None,  # a local devnet is not the r1007 genesis
    )
    assert client.get_chain_id() == 40204
    ```
@@ -218,7 +218,7 @@ forge and hardhat can verify against the same API directly. Two details matter o
 | `CITRATE_GATEWAY_API_KEY` | — | `cgk_` bearer key for the inference gateway |
 
 `CitrateClient(rpc_url, private_key=None, timeout=..., allow_insecure_http=False, chain_id=None,
-expected_genesis_hash=<vendored>)`. The expected chain id (40204), genesis hash (r1006) and
+expected_genesis_hash=<vendored>)`. The expected chain id (40204), genesis hash (r1007) and
 gateway base URL come from the vendored federation artifact; `citrate contract` prints the full
 table. The managers take the same `chain_id=` / `expected_genesis_hash=` keywords.
 
